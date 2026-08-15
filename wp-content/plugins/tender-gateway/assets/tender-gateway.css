@@ -245,6 +245,49 @@
 
 /* -------------------------------------------------------------- archive */
 
+/* --------------------------------------------------------- source badge */
+
+.tg-source {
+	display: flex;
+	align-items: flex-start;
+	gap: .7rem;
+	padding: .85rem 1.1rem;
+	margin-bottom: 1.1rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-left: 3px solid var(--tg-teal);
+	border-radius: var(--tg-radius);
+}
+.tg-source--demo { border-left-color: var(--tg-gold); }
+
+.tg-source__dot {
+	flex: 0 0 auto;
+	width: .55rem;
+	height: .55rem;
+	margin-top: .45rem;
+	border-radius: 50%;
+	background: var(--tg-teal);
+	box-shadow: 0 0 0 3px rgba(16, 105, 95, .16);
+}
+.tg-source--demo .tg-source__dot {
+	background: var(--tg-gold);
+	box-shadow: 0 0 0 3px rgba(184, 145, 43, .18);
+}
+
+.tg-source__text { display: flex; flex-direction: column; min-width: 0; }
+.tg-source__text strong {
+	font-size: .8rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .06em;
+	color: var(--tg-ink);
+}
+.tg-source__text span {
+	font-size: .85rem;
+	line-height: 1.5;
+	color: var(--tg-muted);
+}
+
 .tg-filters {
 	padding: 1.4rem;
 	margin-bottom: 1.6rem;

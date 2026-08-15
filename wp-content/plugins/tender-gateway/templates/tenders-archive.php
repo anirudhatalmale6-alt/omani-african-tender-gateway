@@ -14,6 +14,8 @@ $base      = tg_page_url( 'tenders' );
 ?>
 <div class="tg-archive">
 
+	<?php echo TG_Shortcodes::render( 'source-badge' ); // phpcs:ignore WordPress.Security.EscapeOutput ?>
+
 	<form class="tg-filters" method="get" action="<?php echo esc_url( $base ); ?>">
 		<div class="tg-filters__search">
 			<label class="tg-sr" for="tg-s">Search tenders</label>

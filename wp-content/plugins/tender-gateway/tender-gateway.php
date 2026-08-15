@@ -17,6 +17,8 @@ define( 'TG_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TG_URL', plugin_dir_url( __FILE__ ) );
 
 require_once TG_PATH . 'includes/class-tg-sample-data.php';
+require_once TG_PATH . 'includes/class-tg-store.php';
+require_once TG_PATH . 'includes/class-tg-sync.php';
 require_once TG_PATH . 'includes/class-tg-api.php';
 require_once TG_PATH . 'includes/class-tg-router.php';
 require_once TG_PATH . 'includes/class-tg-auth.php';
@@ -37,7 +39,11 @@ function tg_default_settings() {
 		'auth_style'      => 'bearer',   // bearer | header | query
 		'auth_header'     => 'X-API-Key',
 		'auth_query_key'  => 'api_key',
+		'format'          => 'auto',     // auto | json | xml
 		'results_path'    => '',         // dot path to the array inside the response, e.g. "data.tenders"
+		'date_param'      => 'posting_date',
+		'date_format'     => 'Y-m-d',
+		'sync_days'       => 3,          // posting dates to walk on each sync
 		'cache_minutes'   => 30,
 		'map'             => array(
 			'id'          => 'id',
@@ -146,6 +152,7 @@ add_action( 'plugins_loaded', function () {
 	TG_Saved::init();
 	TG_Shortcodes::init();
 	TG_Admin::init();
+	TG_Sync::init();
 } );
 
 add_action( 'wp_enqueue_scripts', function () {
@@ -159,5 +166,6 @@ add_action( 'wp_enqueue_scripts', function () {
 
 register_activation_hook( __FILE__, array( 'TG_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, function () {
+	TG_Sync::clear_schedule();
 	flush_rewrite_rules();
 } );

@@ -34,8 +34,15 @@ class TG_Install {
 
 	public static function activate() {
 		TG_Auth::register_role();
+		TG_Store::install();
 		self::create_pages();
 		self::create_demo_supplier();
+
+		// Only schedule the pull once a live source is actually selected; there
+		// is nothing to sync while the demonstration feed is in use.
+		if ( 'remote' === tg_setting( 'source' ) ) {
+			TG_Sync::activate_schedule();
+		}
 
 		TG_Router::rewrites();
 		flush_rewrite_rules();

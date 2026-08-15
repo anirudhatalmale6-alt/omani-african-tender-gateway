@@ -7,9 +7,14 @@ $all       = TG_API::all();
 $countries = TG_API::facet( 'country' );
 $sectors   = TG_API::facet( 'sector' );
 
-$total_value = 0;
+// Deliberately a count, not a summed value: the feed carries ZAR, KES, NGN,
+// EUR and USD side by side, and adding those together would be meaningless.
+$closing_soon = 0;
 foreach ( $all as $tender ) {
-	$total_value += (float) $tender['value'];
+	$days = TG_API::days_left( $tender );
+	if ( null !== $days && $days >= 0 && $days <= 30 ) {
+		$closing_soon++;
+	}
 }
 ?>
 <div class="tg-stats tg-stats--band">
@@ -26,7 +31,7 @@ foreach ( $all as $tender ) {
 		<span>Procurement sectors</span>
 	</div>
 	<div class="tg-stat">
-		<strong>USD <?php echo esc_html( number_format( $total_value / 1000000000, 1 ) ); ?>B</strong>
-		<span>Combined contract value</span>
+		<strong><?php echo esc_html( number_format_i18n( $closing_soon ) ); ?></strong>
+		<span>Closing within 30 days</span>
 	</div>
 </div>

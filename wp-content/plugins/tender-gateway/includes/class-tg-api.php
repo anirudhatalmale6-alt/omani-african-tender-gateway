@@ -13,142 +13,37 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_API {
 
-	const CACHE_KEY = 'tg_tender_feed';
-
 	/**
-	 * All tenders, normalised and cached.
+	 * All tenders, normalised and keyed by id.
 	 *
-	 * @param bool $force Bypass the cache.
-	 * @return array
+	 * Nothing here ever calls the third-party API. Live records are pulled on a
+	 * schedule by TG_Sync into TG_Store, so rendering a page never depends on
+	 * TendersOnTime being reachable - which is the point, with a Ministry
+	 * presentation to get through.
 	 */
-	public static function all( $force = false ) {
+	public static function all() {
 		$settings = tg_settings();
 
-		if ( 'remote' !== $settings['source'] || empty( $settings['endpoint'] ) ) {
+		if ( 'remote' !== $settings['source'] ) {
 			return self::index( TG_Sample_Data::tenders() );
 		}
 
-		if ( ! $force ) {
-			$cached = get_transient( self::CACHE_KEY );
-			if ( is_array( $cached ) ) {
-				return $cached;
-			}
-		}
+		$live = TG_Store::all( 'live' );
 
-		$fetched = self::fetch_remote( $settings );
-
-		if ( is_wp_error( $fetched ) ) {
-			// Never leave the Ministry looking at an error page: fall back to the
-			// last good payload, then to the sample feed.
-			$stale = get_option( 'tg_last_good_feed', array() );
-			if ( is_array( $stale ) && $stale ) {
-				return $stale;
-			}
-
+		// A live source that has not completed its first sync yet would leave the
+		// site empty; show the demonstration feed until real records land.
+		if ( ! $live ) {
 			return self::index( TG_Sample_Data::tenders() );
 		}
 
-		$fetched = self::index( $fetched );
-
-		set_transient( self::CACHE_KEY, $fetched, max( 1, (int) $settings['cache_minutes'] ) * MINUTE_IN_SECONDS );
-		update_option( 'tg_last_good_feed', $fetched, false );
-		update_option( 'tg_last_sync', time(), false );
-
-		return $fetched;
+		return $live;
 	}
 
 	/**
-	 * Call the configured endpoint and normalise the payload.
-	 *
-	 * @return array|WP_Error
+	 * True when the site is showing records that came from the live API.
 	 */
-	public static function fetch_remote( $settings ) {
-		$url     = $settings['endpoint'];
-		$headers = array( 'Accept' => 'application/json' );
-
-		if ( ! empty( $settings['api_key'] ) ) {
-			switch ( $settings['auth_style'] ) {
-				case 'header':
-					$header_name             = $settings['auth_header'] ? $settings['auth_header'] : 'X-API-Key';
-					$headers[ $header_name ] = $settings['api_key'];
-					break;
-				case 'query':
-					$query_key = $settings['auth_query_key'] ? $settings['auth_query_key'] : 'api_key';
-					$url       = add_query_arg( $query_key, rawurlencode( $settings['api_key'] ), $url );
-					break;
-				case 'bearer':
-				default:
-					$headers['Authorization'] = 'Bearer ' . $settings['api_key'];
-					break;
-			}
-		}
-
-		$response = wp_remote_get( $url, array(
-			'timeout' => 20,
-			'headers' => $headers,
-		) );
-
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( $code < 200 || $code > 299 ) {
-			return new WP_Error( 'tg_http', sprintf( 'Tender API returned HTTP %d.', $code ) );
-		}
-
-		$body = json_decode( wp_remote_retrieve_body( $response ), true );
-		if ( null === $body ) {
-			return new WP_Error( 'tg_json', 'Tender API response was not valid JSON.' );
-		}
-
-		$rows = self::dig( $body, $settings['results_path'] );
-		if ( ! is_array( $rows ) ) {
-			return new WP_Error( 'tg_shape', 'Could not find a list of tenders in the API response. Check the "results path" setting.' );
-		}
-
-		// Some APIs return an object keyed by id rather than a plain list.
-		$rows = array_values( $rows );
-
-		$normalised = array();
-		foreach ( $rows as $row ) {
-			if ( is_array( $row ) ) {
-				$normalised[] = self::normalise( $row, $settings['map'] );
-			}
-		}
-
-		return $normalised;
-	}
-
-	/**
-	 * Walk a dot-separated path into a decoded JSON body.
-	 */
-	private static function dig( $body, $path ) {
-		$path = trim( (string) $path );
-
-		if ( '' === $path ) {
-			// No path configured: accept either a bare list or the usual wrappers.
-			if ( isset( $body[0] ) ) {
-				return $body;
-			}
-			foreach ( array( 'data', 'results', 'items', 'tenders', 'records' ) as $guess ) {
-				if ( isset( $body[ $guess ] ) && is_array( $body[ $guess ] ) ) {
-					return $body[ $guess ];
-				}
-			}
-
-			return is_array( $body ) ? $body : null;
-		}
-
-		$node = $body;
-		foreach ( explode( '.', $path ) as $segment ) {
-			if ( ! is_array( $node ) || ! array_key_exists( $segment, $node ) ) {
-				return null;
-			}
-			$node = $node[ $segment ];
-		}
-
-		return $node;
+	public static function is_live() {
+		return 'remote' === tg_setting( 'source' ) && TG_Store::count( 'live' ) > 0;
 	}
 
 	/**
@@ -188,7 +83,7 @@ class TG_API {
 			'sector'      => (string) $get( 'sector' ),
 			'summary'     => $summary,
 			'description' => $description,
-			'value'       => (float) $get( 'value', 0 ),
+			'value'       => self::number( $get( 'value', 0 ) ),
 			'currency'    => (string) $get( 'currency', 'USD' ),
 			'published'   => self::date( $get( 'published' ) ),
 			'deadline'    => self::date( $get( 'deadline' ) ),
@@ -204,6 +99,57 @@ class TG_API {
 		}
 
 		return $tender;
+	}
+
+	/**
+	 * Parse a contract value out of whatever the feed calls a number.
+	 *
+	 * Vendor feeds send these as strings: "3,120,000,000", "USD 48.5 million",
+	 * "1.234.567,89". A bare (float) cast turns the first of those into 3.
+	 */
+	public static function number( $value ) {
+		if ( is_int( $value ) || is_float( $value ) ) {
+			return (float) $value;
+		}
+
+		$text = trim( (string) $value );
+		if ( '' === $text ) {
+			return 0.0;
+		}
+
+		$multiplier = 1;
+		if ( preg_match( '/\b(million|mn|m)\b/i', $text ) ) {
+			$multiplier = 1000000;
+		} elseif ( preg_match( '/\b(billion|bn)\b/i', $text ) ) {
+			$multiplier = 1000000000;
+		}
+
+		// Keep only the numeric run, dropping currency codes and words.
+		if ( ! preg_match( '/-?[\d.,]+/', $text, $match ) ) {
+			return 0.0;
+		}
+		$number = $match[0];
+
+		$last_comma = strrpos( $number, ',' );
+		$last_dot   = strrpos( $number, '.' );
+
+		if ( false !== $last_comma && false !== $last_dot ) {
+			// Whichever separator comes last is the decimal point.
+			if ( $last_comma > $last_dot ) {
+				$number = str_replace( '.', '', $number );
+				$number = str_replace( ',', '.', $number );
+			} else {
+				$number = str_replace( ',', '', $number );
+			}
+		} elseif ( false !== $last_comma ) {
+			// A lone comma is a decimal point only when it is not grouping
+			// three digits, e.g. "1,5" is 1.5 but "1,500" is 1500.
+			$number = preg_match( '/,\d{3}(?:\D|$)/', $number )
+				? str_replace( ',', '', $number )
+				: str_replace( ',', '.', $number );
+		}
+
+		return (float) $number * $multiplier;
 	}
 
 	private static function date( $value ) {
@@ -341,7 +287,9 @@ class TG_API {
 		$value    = (float) $tender['value'];
 		$currency = $tender['currency'] ? $tender['currency'] : 'USD';
 
-		if ( $value >= 1000000 ) {
+		if ( $value >= 1000000000 ) {
+			$formatted = rtrim( rtrim( number_format( $value / 1000000000, 1 ), '0' ), '.' ) . 'B';
+		} elseif ( $value >= 1000000 ) {
 			$formatted = rtrim( rtrim( number_format( $value / 1000000, 1 ), '0' ), '.' ) . 'M';
 		} elseif ( $value >= 1000 ) {
 			$formatted = rtrim( rtrim( number_format( $value / 1000, 1 ), '0' ), '.' ) . 'K';
