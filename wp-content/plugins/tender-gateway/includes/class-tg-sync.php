@@ -85,6 +85,17 @@ class TG_Sync {
 		$first_raw = null;
 
 		for ( $offset = 0; $offset < $days; $offset++ ) {
+			// Metered plans bill per call and simply stop answering once the cap
+			// is hit, so stop ourselves first and say so rather than burning the
+			// allowance and looking like an outage.
+			if ( self::calls_remaining() < 1 ) {
+				$error = sprintf(
+					'Daily API call limit reached (%d calls). Sync stopped early; it will resume tomorrow.',
+					(int) $settings['daily_call_cap']
+				);
+				break;
+			}
+
 			$date   = gmdate( $settings['date_format'], strtotime( "-{$offset} days" ) );
 			$result = self::fetch_date( $settings, $date );
 
@@ -143,6 +154,7 @@ class TG_Sync {
 		}
 
 		$started  = microtime( true );
+		self::count_call();
 		$response = wp_remote_get( $url, array( 'timeout' => 30, 'headers' => $headers ) );
 		$elapsed  = (int) round( ( microtime( true ) - $started ) * 1000 );
 
@@ -209,12 +221,38 @@ class TG_Sync {
 			$url = add_query_arg( $settings['date_param'], rawurlencode( $date ), $url );
 		}
 
-		if ( ! empty( $settings['api_key'] ) && 'query' === $settings['auth_style'] ) {
-			$key = $settings['auth_query_key'] ? $settings['auth_query_key'] : 'api_key';
-			$url = add_query_arg( $key, rawurlencode( $settings['api_key'] ), $url );
+		if ( 'query' === $settings['auth_style'] ) {
+			if ( ! empty( $settings['auth_user'] ) && ! empty( $settings['auth_user_param'] ) ) {
+				$url = add_query_arg( $settings['auth_user_param'], rawurlencode( $settings['auth_user'] ), $url );
+			}
+
+			if ( ! empty( $settings['api_key'] ) ) {
+				$key = $settings['auth_query_key'] ? $settings['auth_query_key'] : 'api_key';
+				$url = add_query_arg( $key, rawurlencode( $settings['api_key'] ), $url );
+			}
 		}
 
 		return $url;
+	}
+
+	/* ------------------------------------------------------- call metering */
+
+	private static function calls_key() {
+		return 'tg_api_calls_' . gmdate( 'Y-m-d' );
+	}
+
+	public static function calls_today() {
+		return (int) get_option( self::calls_key(), 0 );
+	}
+
+	private static function count_call() {
+		update_option( self::calls_key(), self::calls_today() + 1, false );
+	}
+
+	public static function calls_remaining() {
+		$cap = (int) tg_setting( 'daily_call_cap', 25 );
+
+		return $cap > 0 ? max( 0, $cap - self::calls_today() ) : PHP_INT_MAX;
 	}
 
 	/**
@@ -228,6 +266,22 @@ class TG_Sync {
 
 		if ( 'auto' === $format ) {
 			$format = ( '' !== $body && '<' === $body[0] ) ? 'xml' : 'json';
+		}
+
+		if ( 'json' === $format || 'auto' === $format ) {
+			// Checked before anything else: TendersOnTime answers HTTP 200 and puts
+			// the failure in the body ({"status":"failed","message":"Api Expired!",
+			// "data":[]}). Read only the status code and an expired key looks
+			// exactly like a quiet day with no tenders.
+			$peek = json_decode( $body, true );
+
+			if ( is_array( $peek ) ) {
+				$envelope = self::envelope_error( $peek );
+
+				if ( $envelope ) {
+					return new WP_Error( 'tg_api_said_no', $envelope );
+				}
+			}
 		}
 
 		if ( 'xml' === $format ) {
@@ -264,6 +318,42 @@ class TG_Sync {
 		return array_values( $rows );
 	}
 
+	/**
+	 * Spot an application-level failure carried inside a 200 response.
+	 *
+	 * @return string Message to report, or '' when the payload looks healthy.
+	 */
+	private static function envelope_error( $body ) {
+		$failed = array( 'failed', 'fail', 'error', 'false', '0', 'denied' );
+
+		foreach ( array( 'status', 'result', 'success' ) as $field ) {
+			if ( ! isset( $body[ $field ] ) || ! is_scalar( $body[ $field ] ) ) {
+				continue;
+			}
+
+			$value = strtolower( trim( (string) $body[ $field ] ) );
+
+			// A literal boolean false in "success" reads as an empty string.
+			if ( 'success' === $field && false === $body[ $field ] ) {
+				$value = 'false';
+			}
+
+			if ( in_array( $value, $failed, true ) ) {
+				$message = '';
+				foreach ( array( 'message', 'error', 'msg', 'description' ) as $key ) {
+					if ( ! empty( $body[ $key ] ) && is_scalar( $body[ $key ] ) ) {
+						$message = (string) $body[ $key ];
+						break;
+					}
+				}
+
+				return $message ? 'The tender API refused the request: ' . $message : 'The tender API reported a failure without a message.';
+			}
+		}
+
+		return '';
+	}
+
 	private static function dig( $body, $path ) {
 		$path = trim( (string) $path );
 
@@ -296,11 +386,15 @@ class TG_Sync {
 	 * Never write a live API key into the log that the demo screen renders.
 	 */
 	private static function mask( $text, $key ) {
-		if ( ! $key ) {
-			return $text;
+		// The username is half of the credential pair on some feeds, so mask it
+		// too - this log is designed to be shown on a projector.
+		$secrets = array_filter( array( $key, tg_setting( 'auth_user' ) ) );
+
+		foreach ( $secrets as $secret ) {
+			$text = str_replace( rawurlencode( $secret ), '***', str_replace( $secret, '***', $text ) );
 		}
 
-		return str_replace( rawurlencode( $key ), '***', str_replace( $key, '***', $text ) );
+		return $text;
 	}
 
 	private static function mask_headers( $headers, $key ) {

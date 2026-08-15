@@ -39,6 +39,11 @@ function tg_default_settings() {
 		'auth_style'      => 'bearer',   // bearer | header | query
 		'auth_header'     => 'X-API-Key',
 		'auth_query_key'  => 'api_key',
+		// Some feeds (TendersOnTime among them) want a username alongside the
+		// key, both in the query string.
+		'auth_user_param' => 'username',
+		'auth_user'       => '',
+		'daily_call_cap'  => 25,        // hard stop; trial plans are metered
 		'format'          => 'auto',     // auto | json | xml
 		'results_path'    => '',         // dot path to the array inside the response, e.g. "data.tenders"
 		'date_param'      => 'posting_date',

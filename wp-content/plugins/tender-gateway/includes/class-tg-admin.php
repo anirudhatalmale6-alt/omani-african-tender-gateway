@@ -50,14 +50,18 @@ class TG_Admin {
 	 */
 	private static function tendersontime_preset() {
 		return array(
-			'format'       => 'auto',
-			'auth_style'   => 'query',
-			'auth_query_key' => 'api_key',
-			'date_param'   => 'posting_date',
-			'date_format'  => 'Y-m-d',
-			'sync_days'    => 3,
-			'results_path' => '',
-			'map'          => array(
+			'format'          => 'json',
+			'auth_style'      => 'query',
+			'auth_user_param' => 'username',
+			'auth_query_key'  => 'key',
+			'date_param'      => 'date',
+			'date_format'     => 'Y-m-d',
+			// The trial only serves today and yesterday, and meters calls, so two
+			// dates per run is both the maximum useful and the affordable number.
+			'sync_days'       => 2,
+			'daily_call_cap'  => 25,
+			'results_path'    => 'data',
+			'map'             => array(
 				'id'          => 'tender_id',
 				'reference'   => 'tender_no',
 				'title'       => 'tender_title',
@@ -111,6 +115,9 @@ class TG_Admin {
 			'auth_style'     => isset( $post['auth_style'] ) && in_array( $post['auth_style'], array( 'bearer', 'header', 'query' ), true ) ? $post['auth_style'] : 'bearer',
 			'auth_header'    => isset( $post['auth_header'] ) ? sanitize_text_field( $post['auth_header'] ) : 'X-API-Key',
 			'auth_query_key' => isset( $post['auth_query_key'] ) ? sanitize_text_field( $post['auth_query_key'] ) : 'api_key',
+			'auth_user_param' => isset( $post['auth_user_param'] ) ? sanitize_text_field( $post['auth_user_param'] ) : 'username',
+			'auth_user'      => isset( $post['auth_user'] ) ? sanitize_text_field( $post['auth_user'] ) : '',
+			'daily_call_cap' => isset( $post['daily_call_cap'] ) ? max( 0, (int) $post['daily_call_cap'] ) : 25,
 			'format'         => isset( $post['format'] ) && in_array( $post['format'], array( 'auto', 'json', 'xml' ), true ) ? $post['format'] : 'auto',
 			'results_path'   => isset( $post['results_path'] ) ? sanitize_text_field( $post['results_path'] ) : '',
 			'date_param'     => isset( $post['date_param'] ) ? sanitize_text_field( $post['date_param'] ) : 'posting_date',
@@ -257,8 +264,13 @@ class TG_Admin {
 							</select>
 							<p>
 								Header name: <input type="text" class="code" name="auth_header" value="<?php echo esc_attr( $settings['auth_header'] ); ?>">
-								&nbsp; Query parameter: <input type="text" class="code" name="auth_query_key" value="<?php echo esc_attr( $settings['auth_query_key'] ); ?>">
+								&nbsp; Key parameter: <input type="text" class="code" name="auth_query_key" value="<?php echo esc_attr( $settings['auth_query_key'] ); ?>">
 							</p>
+							<p>
+								Username parameter: <input type="text" class="code" name="auth_user_param" value="<?php echo esc_attr( $settings['auth_user_param'] ); ?>">
+								&nbsp; Username: <input type="text" class="code" name="auth_user" value="<?php echo esc_attr( $settings['auth_user'] ); ?>" autocomplete="off">
+							</p>
+							<p class="description">Leave the username blank if the feed only wants a key. Both values are masked in the data flow log.</p>
 						</td>
 					</tr>
 					<tr>
@@ -303,7 +315,21 @@ class TG_Admin {
 						<th scope="row"><label for="tg-sync-days">Posting dates per sync</label></th>
 						<td>
 							<input type="number" min="1" max="30" id="tg-sync-days" name="sync_days" value="<?php echo esc_attr( $settings['sync_days'] ); ?>" class="small-text">
-							<p class="description">How many days back from today to walk on each run. 3 covers a weekend without re-pulling the archive every time.</p>
+							<p class="description">
+								How many days back from today to walk on each run, one API call per date.
+								At <?php echo esc_html( $settings['sync_days'] ); ?> dates every 3 hours that is
+								<strong><?php echo esc_html( (int) $settings['sync_days'] * 8 ); ?> calls a day</strong>.
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="tg-cap">Daily call limit</label></th>
+						<td>
+							<input type="number" min="0" id="tg-cap" name="daily_call_cap" value="<?php echo esc_attr( $settings['daily_call_cap'] ); ?>" class="small-text">
+							<p class="description">
+								Hard stop, so a metered plan is never overrun. 0 means no limit.
+								Used today: <strong><?php echo esc_html( TG_Sync::calls_today() ); ?></strong>.
+							</p>
 						</td>
 					</tr>
 				</table>
