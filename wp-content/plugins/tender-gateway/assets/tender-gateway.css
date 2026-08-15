@@ -1,0 +1,949 @@
+/* ==========================================================================
+   Tender Gateway - supplier journey components
+   ========================================================================== */
+
+:root {
+	--tg-ink:        #0b2545;
+	--tg-ink-deep:   #071a33;
+	--tg-ink-soft:   #40556f;
+	--tg-muted:      #6b7c93;
+	--tg-line:       #d9e0e9;
+	--tg-line-soft:  #eaeef3;
+	--tg-surface:    #ffffff;
+	--tg-canvas:     #f5f7fa;
+	--tg-sand:       #f8f5ef;
+	--tg-accent:     #a8112e;
+	--tg-accent-dk:  #8a0d25;
+	--tg-teal:       #10695f;
+	--tg-gold:       #b8912b;
+	--tg-amber:      #9a5b00;
+	--tg-amber-bg:   #fdf3e2;
+	--tg-red-bg:     #fdeced;
+	--tg-green-bg:   #e8f4f1;
+	--tg-radius:     6px;
+	--tg-shadow:     0 1px 2px rgba(11, 37, 69, .06), 0 8px 24px rgba(11, 37, 69, .06);
+	--tg-shadow-lg:  0 2px 4px rgba(11, 37, 69, .07), 0 18px 44px rgba(11, 37, 69, .12);
+}
+
+/* The site is designed light. Restate the palette so a phone in dark mode
+   does not repaint it into an unreadable half-inverted state. */
+@media (prefers-color-scheme: dark) {
+	:root {
+		--tg-surface: #ffffff;
+		--tg-canvas:  #f5f7fa;
+		--tg-sand:    #f8f5ef;
+		--tg-ink:     #0b2545;
+		--tg-muted:   #6b7c93;
+	}
+}
+
+.tg-sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+/* --------------------------------------------------------------- buttons */
+
+.tg-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: .5em;
+	padding: .72em 1.35em;
+	border: 1px solid transparent;
+	border-radius: var(--tg-radius);
+	font: inherit;
+	font-size: .95rem;
+	font-weight: 600;
+	line-height: 1.2;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.tg-btn--primary { background: var(--tg-ink); color: #fff; }
+.tg-btn--primary:hover,
+.tg-btn--primary:focus { background: var(--tg-ink-deep); color: #fff; }
+
+.tg-btn--accent { background: var(--tg-accent); color: #fff; }
+.tg-btn--accent:hover,
+.tg-btn--accent:focus { background: var(--tg-accent-dk); color: #fff; }
+
+.tg-btn--ghost {
+	background: #fff;
+	border-color: var(--tg-line);
+	color: var(--tg-ink);
+}
+.tg-btn--ghost:hover,
+.tg-btn--ghost:focus { border-color: var(--tg-ink); color: var(--tg-ink); }
+
+.tg-btn--lg     { padding: .9em 1.7em; font-size: 1rem; }
+.tg-btn--block  { display: flex; width: 100%; }
+.tg-btn + .tg-btn--block { margin-top: .6rem; }
+
+.tg-link {
+	color: var(--tg-accent);
+	font-weight: 600;
+	text-decoration: none;
+	border-bottom: 1px solid currentColor;
+}
+.tg-link:hover { color: var(--tg-accent-dk); }
+
+/* ----------------------------------------------------------------- cards */
+
+.tg-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr));
+	gap: 1.25rem;
+}
+
+.tg-card {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	padding: 1.4rem 1.4rem 1.15rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-top: 3px solid var(--tg-ink);
+	border-radius: var(--tg-radius);
+	box-shadow: var(--tg-shadow);
+	transition: box-shadow .18s ease, transform .18s ease;
+}
+.tg-card:hover { box-shadow: var(--tg-shadow-lg); transform: translateY(-2px); }
+.tg-card--soon   { border-top-color: var(--tg-gold); }
+.tg-card--urgent { border-top-color: var(--tg-accent); }
+
+.tg-card__top {
+	display: flex;
+	align-items: center;
+	gap: .65rem;
+	margin-bottom: .85rem;
+}
+
+.tg-flag {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 34px;
+	height: 34px;
+	background: var(--tg-ink);
+	color: #fff;
+	border-radius: 4px;
+	font-size: .72rem;
+	font-weight: 700;
+	letter-spacing: .04em;
+}
+
+.tg-card__meta { display: flex; flex-direction: column; min-width: 0; }
+.tg-card__country {
+	font-size: .84rem;
+	font-weight: 700;
+	color: var(--tg-ink);
+}
+.tg-card__sector {
+	font-size: .74rem;
+	color: var(--tg-muted);
+	text-transform: uppercase;
+	letter-spacing: .05em;
+}
+
+.tg-card__title {
+	margin: 0 0 .6rem;
+	font-size: 1.03rem;
+	line-height: 1.4;
+	font-weight: 700;
+}
+.tg-card__title a {
+	color: var(--tg-ink);
+	text-decoration: none;
+}
+.tg-card__title a:hover { color: var(--tg-accent); }
+
+.tg-card__summary {
+	margin: 0 0 1rem;
+	font-size: .88rem;
+	line-height: 1.6;
+	color: var(--tg-ink-soft);
+}
+
+.tg-card__facts {
+	margin: 0 0 1rem;
+	padding: .85rem 0 0;
+	border-top: 1px solid var(--tg-line-soft);
+	display: grid;
+	gap: .55rem;
+}
+/* Stacked, not label-left/value-right: buyer names run long and a two-column
+   row squeezes them into an unreadable column. */
+.tg-card__facts div { display: grid; gap: .1rem; min-width: 0; }
+.tg-card__facts dt {
+	margin: 0;
+	font-size: .72rem;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	color: var(--tg-muted);
+}
+.tg-card__facts dd {
+	margin: 0;
+	font-size: .84rem;
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--tg-ink);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.tg-card__foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .75rem;
+	margin-top: auto;
+	flex-wrap: wrap;
+}
+
+.tg-deadline {
+	font-size: .8rem;
+	font-weight: 700;
+	padding: .3em .7em;
+	border-radius: 100px;
+	background: var(--tg-green-bg);
+	color: var(--tg-teal);
+}
+.tg-deadline--soon   { background: var(--tg-amber-bg); color: var(--tg-amber); }
+.tg-deadline--urgent { background: var(--tg-red-bg);   color: var(--tg-accent); }
+
+.tg-card__link {
+	display: inline-flex;
+	align-items: center;
+	gap: .35em;
+	font-size: .86rem;
+	font-weight: 700;
+	color: var(--tg-accent);
+	text-decoration: none;
+}
+.tg-card__link:hover { color: var(--tg-accent-dk); }
+
+.tg-card__lock {
+	display: inline-flex;
+	align-items: center;
+	gap: .35em;
+	margin-top: .9rem;
+	padding-top: .8rem;
+	border-top: 1px dashed var(--tg-line);
+	font-size: .74rem;
+	font-weight: 600;
+	color: var(--tg-muted);
+	text-transform: uppercase;
+	letter-spacing: .05em;
+}
+
+/* -------------------------------------------------------------- archive */
+
+.tg-filters {
+	padding: 1.4rem;
+	margin-bottom: 1.6rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+	box-shadow: var(--tg-shadow);
+}
+
+.tg-filters__search { position: relative; margin-bottom: 1rem; }
+.tg-filters__icon {
+	position: absolute;
+	left: .9rem;
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--tg-muted);
+	pointer-events: none;
+}
+.tg-filters__search input {
+	width: 100%;
+	padding: .8rem 1rem .8rem 2.6rem;
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+	font-size: .95rem;
+	color: var(--tg-ink);
+	background: #fff;
+}
+
+.tg-filters__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: .85rem;
+}
+.tg-filters__row .tg-field { flex: 1 1 170px; min-width: 0; }
+.tg-filters__row .tg-btn   { flex: 0 0 auto; }
+
+.tg-field { display: block; min-width: 0; }
+.tg-field > span {
+	display: block;
+	margin-bottom: .35rem;
+	font-size: .76rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	color: var(--tg-muted);
+}
+.tg-field > span em { color: var(--tg-accent); font-style: normal; }
+.tg-field select,
+.tg-field input {
+	width: 100%;
+	padding: .68rem .8rem;
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+	background: #fff;
+	color: var(--tg-ink);
+	font-size: .92rem;
+	font-family: inherit;
+}
+.tg-field select:focus,
+.tg-field input:focus,
+.tg-filters__search input:focus {
+	outline: 2px solid var(--tg-ink);
+	outline-offset: 1px;
+	border-color: var(--tg-ink);
+}
+.tg-field small {
+	display: block;
+	margin-top: .3rem;
+	font-size: .76rem;
+	color: var(--tg-muted);
+}
+
+.tg-archive__count {
+	margin: 0 0 1.1rem;
+	font-size: .92rem;
+	color: var(--tg-ink-soft);
+}
+.tg-archive__count strong { color: var(--tg-ink); font-size: 1.05rem; }
+.tg-archive__page {
+	margin-left: .6rem;
+	padding-left: .7rem;
+	border-left: 1px solid var(--tg-line);
+	color: var(--tg-muted);
+}
+
+.tg-pagination {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .4rem;
+	margin-top: 1.8rem;
+}
+.tg-pagination__link {
+	min-width: 2.4rem;
+	padding: .5rem .7rem;
+	text-align: center;
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+	background: #fff;
+	color: var(--tg-ink);
+	font-size: .88rem;
+	font-weight: 600;
+	text-decoration: none;
+}
+.tg-pagination__link:hover { border-color: var(--tg-ink); }
+.tg-pagination__link.is-current {
+	background: var(--tg-ink);
+	border-color: var(--tg-ink);
+	color: #fff;
+}
+
+.tg-cta-band {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1.4rem;
+	margin-top: 2.4rem;
+	padding: 1.8rem;
+	background: var(--tg-ink);
+	border-radius: var(--tg-radius);
+	color: #fff;
+}
+.tg-cta-band h3 { margin: 0 0 .4rem; color: #fff; font-size: 1.25rem; }
+.tg-cta-band p  { margin: 0; color: #c9d5e4; font-size: .93rem; max-width: 60ch; }
+
+/* --------------------------------------------------------------- single */
+
+.tg-breadcrumb {
+	display: flex;
+	gap: .5rem;
+	margin-bottom: 1.2rem;
+	font-size: .84rem;
+	color: var(--tg-muted);
+}
+.tg-breadcrumb a { color: var(--tg-accent); text-decoration: none; }
+.tg-breadcrumb a:hover { text-decoration: underline; }
+
+.tg-single__head { margin-bottom: 1.8rem; }
+.tg-single__head h1 {
+	margin: .6rem 0 .7rem;
+	font-size: clamp(1.5rem, 1.15rem + 1.6vw, 2.3rem);
+	line-height: 1.25;
+	color: var(--tg-ink);
+}
+.tg-single__summary,
+.tg-single__ref {
+	margin: 0;
+	font-size: 1rem;
+	line-height: 1.65;
+	color: var(--tg-ink-soft);
+	max-width: 70ch;
+}
+.tg-single__ref strong { color: var(--tg-ink); }
+
+.tg-chips { display: flex; flex-wrap: wrap; gap: .45rem; }
+.tg-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: .35em;
+	padding: .3em .75em;
+	background: var(--tg-canvas);
+	border: 1px solid var(--tg-line);
+	border-radius: 100px;
+	font-size: .78rem;
+	font-weight: 600;
+	color: var(--tg-ink-soft);
+}
+.tg-chip--country  { background: var(--tg-ink); border-color: var(--tg-ink); color: #fff; }
+.tg-chip--deadline { background: var(--tg-amber-bg); border-color: #f0dcb8; color: var(--tg-amber); }
+.tg-chip--unlocked { background: var(--tg-green-bg); border-color: #bfded7; color: var(--tg-teal); }
+
+.tg-single__grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 1.5rem;
+	align-items: start;
+}
+@media (min-width: 900px) {
+	.tg-single__grid { grid-template-columns: minmax(0, 1fr) 320px; }
+	.tg-single__aside { position: sticky; top: 1.5rem; }
+}
+
+.tg-panel {
+	padding: 1.6rem;
+	margin-bottom: 1.3rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+	box-shadow: var(--tg-shadow);
+}
+.tg-panel:last-child { margin-bottom: 0; }
+.tg-panel h2 {
+	margin: 0 0 1.1rem;
+	padding-bottom: .7rem;
+	border-bottom: 2px solid var(--tg-line-soft);
+	font-size: 1.12rem;
+	color: var(--tg-ink);
+}
+.tg-panel h3 { margin: 0 0 .9rem; font-size: 1rem; color: var(--tg-ink); }
+.tg-panel p  { margin: 0 0 .9rem; font-size: .95rem; line-height: 1.7; color: var(--tg-ink-soft); }
+.tg-panel p:last-child { margin-bottom: 0; }
+.tg-panel--tight  { padding: 1.25rem; }
+.tg-panel--muted  { background: var(--tg-sand); }
+
+.tg-datalist { display: grid; gap: .85rem; margin: 0; }
+@media (min-width: 620px) {
+	.tg-datalist { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.6rem; }
+}
+.tg-datalist div { min-width: 0; }
+.tg-datalist dt {
+	margin: 0 0 .2rem;
+	font-size: .74rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	color: var(--tg-muted);
+}
+.tg-datalist dd {
+	margin: 0;
+	font-size: .95rem;
+	color: var(--tg-ink);
+	word-break: break-word;
+}
+
+.tg-glance { list-style: none; margin: 0 0 1.1rem; padding: 0; }
+/* Stacked rather than label-left/value-right: values like "International
+   Competitive Bidding" wrap to three ragged lines in a narrow sidebar. */
+.tg-glance li {
+	display: grid;
+	gap: .1rem;
+	padding: .6rem 0;
+	border-bottom: 1px solid var(--tg-line-soft);
+}
+.tg-glance li:last-child { border-bottom: 0; }
+.tg-glance span {
+	font-size: .72rem;
+	text-transform: uppercase;
+	letter-spacing: .05em;
+	color: var(--tg-muted);
+}
+.tg-glance strong {
+	font-size: .9rem;
+	line-height: 1.4;
+	color: var(--tg-ink);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.tg-ticks { list-style: none; margin: 0; padding: 0; display: grid; gap: .65rem; }
+.tg-ticks li {
+	position: relative;
+	padding-left: 1.8rem;
+	font-size: .94rem;
+	line-height: 1.6;
+	color: var(--tg-ink-soft);
+}
+.tg-ticks li::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: .35em;
+	width: 1.05rem;
+	height: 1.05rem;
+	border-radius: 50%;
+	background: var(--tg-green-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='m3 7.4 2.8 2.8L11 4.6' fill='none' stroke='%2310695f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/70% no-repeat;
+}
+
+.tg-docs { list-style: none; margin: 0 0 1rem; padding: 0; }
+.tg-docs li {
+	display: flex;
+	align-items: center;
+	gap: .75rem;
+	padding: .8rem 0;
+	border-bottom: 1px solid var(--tg-line-soft);
+	flex-wrap: wrap;
+}
+.tg-docs li:last-child { border-bottom: 0; }
+.tg-docs__icon  { color: var(--tg-accent); display: inline-flex; flex: 0 0 auto; }
+.tg-docs__label { flex: 1 1 12rem; font-size: .92rem; font-weight: 600; color: var(--tg-ink); min-width: 0; }
+.tg-docs__size  { font-size: .8rem; color: var(--tg-muted); flex: 0 0 auto; }
+.tg-docs__action {
+	font-size: .82rem;
+	font-weight: 700;
+	color: var(--tg-accent);
+	flex: 0 0 auto;
+}
+
+.tg-note {
+	margin: 0;
+	font-size: .82rem;
+	font-style: italic;
+	color: var(--tg-muted);
+}
+
+/* ----------------------------------------------------------- locked gate */
+
+/* Blur and overlay share one grid cell, so the panel grows to whichever is
+   taller. An absolutely positioned overlay clipped its own content whenever
+   the gate copy ran longer than the teaser behind it. */
+.tg-locked {
+	display: grid;
+	overflow: hidden;
+	padding: 0;
+}
+.tg-locked__blur,
+.tg-locked__overlay { grid-area: 1 / 1; }
+
+.tg-locked__blur {
+	padding: 1.6rem;
+	filter: blur(5px);
+	opacity: .5;
+	user-select: none;
+	pointer-events: none;
+	max-height: 22rem;
+	overflow: hidden;
+}
+.tg-locked__blur h3 { margin: 0 0 .4rem; font-size: 1rem; color: var(--tg-ink); }
+.tg-locked__blur p,
+.tg-locked__blur li { font-size: .92rem; line-height: 1.6; color: var(--tg-ink-soft); }
+.tg-locked__blur p  { margin: 0 0 1.1rem; }
+.tg-locked__blur ul { margin: 0 0 1.1rem; padding-left: 1.2rem; }
+
+.tg-locked__overlay {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding: 1.9rem 1.6rem;
+	background: linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,.97) 34%, #fff 100%);
+	text-align: left;
+}
+.tg-locked__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 46px;
+	height: 46px;
+	margin-bottom: .9rem;
+	border-radius: 50%;
+	background: var(--tg-red-bg);
+	color: var(--tg-accent);
+}
+.tg-locked__overlay h2 {
+	margin: 0 0 .5rem;
+	padding: 0;
+	border: 0;
+	font-size: clamp(1.15rem, 1rem + .7vw, 1.5rem);
+	color: var(--tg-ink);
+}
+.tg-locked__overlay > p {
+	margin: 0 0 .8rem;
+	font-size: .94rem;
+	color: var(--tg-ink-soft);
+}
+.tg-locked__list {
+	list-style: none;
+	margin: 0 0 1.3rem;
+	padding: 0;
+	display: grid;
+	gap: .4rem;
+}
+.tg-locked__list li {
+	position: relative;
+	padding-left: 1.35rem;
+	font-size: .89rem;
+	line-height: 1.5;
+	color: var(--tg-ink-soft);
+}
+.tg-locked__list li::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: .55em;
+	width: .42rem;
+	height: .42rem;
+	border-radius: 50%;
+	background: var(--tg-accent);
+}
+.tg-locked__actions { display: flex; flex-wrap: wrap; gap: .7rem; }
+.tg-locked__note {
+	margin: .9rem 0 0;
+	font-size: .82rem;
+	color: var(--tg-muted);
+}
+
+/* The blurred teaser is decoration; drop it on small screens rather than let
+   it fight the gate copy for the same grid cell. */
+@media (max-width: 640px) {
+	.tg-locked__blur { display: none; }
+	.tg-locked__overlay { background: #fff; }
+}
+
+/* ----------------------------------------------------------------- auth */
+
+.tg-auth {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 1.5rem;
+	align-items: start;
+}
+@media (min-width: 900px) {
+	.tg-auth       { grid-template-columns: minmax(0, 1fr) 300px; }
+	.tg-auth--wide { grid-template-columns: minmax(0, 1fr) 280px; }
+}
+
+.tg-auth__form {
+	padding: 2rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-top: 3px solid var(--tg-accent);
+	border-radius: var(--tg-radius);
+	box-shadow: var(--tg-shadow);
+}
+.tg-auth__form h1 {
+	margin: 0 0 .5rem;
+	font-size: clamp(1.5rem, 1.25rem + 1vw, 2rem);
+	color: var(--tg-ink);
+}
+.tg-auth__lede {
+	margin: 0 0 1.5rem;
+	font-size: .96rem;
+	line-height: 1.6;
+	color: var(--tg-ink-soft);
+}
+
+.tg-auth__context {
+	display: flex;
+	flex-direction: column;
+	gap: .2rem;
+	padding: .9rem 1.1rem;
+	margin-bottom: 1.3rem;
+	background: var(--tg-canvas);
+	border-left: 3px solid var(--tg-ink);
+	border-radius: 0 var(--tg-radius) var(--tg-radius) 0;
+}
+.tg-auth__context span   { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--tg-muted); }
+.tg-auth__context strong { font-size: .92rem; color: var(--tg-ink); line-height: 1.45; }
+
+.tg-form { display: grid; gap: 1.1rem; }
+.tg-form__row { display: grid; gap: 1.1rem; }
+@media (min-width: 560px) {
+	.tg-form__row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.tg-fieldset {
+	margin: 0;
+	padding: 1.2rem;
+	border: 1px solid var(--tg-line-soft);
+	border-radius: var(--tg-radius);
+	display: grid;
+	gap: 1.1rem;
+}
+.tg-fieldset legend {
+	padding: 0 .5rem;
+	font-size: .8rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .06em;
+	color: var(--tg-ink);
+}
+.tg-fieldset__hint {
+	margin: 0;
+	font-size: .85rem;
+	color: var(--tg-muted);
+}
+
+.tg-check {
+	display: inline-flex;
+	align-items: center;
+	gap: .55rem;
+	font-size: .9rem;
+	color: var(--tg-ink-soft);
+	cursor: pointer;
+}
+.tg-check input { width: 1.05rem; height: 1.05rem; accent-color: var(--tg-accent); flex: 0 0 auto; }
+
+.tg-checks { display: flex; flex-wrap: wrap; gap: .55rem; }
+.tg-check--pill {
+	padding: .45rem .85rem;
+	border: 1px solid var(--tg-line);
+	border-radius: 100px;
+	background: #fff;
+	font-size: .84rem;
+}
+.tg-check--pill:has(input:checked) {
+	border-color: var(--tg-ink);
+	background: var(--tg-canvas);
+	color: var(--tg-ink);
+	font-weight: 600;
+}
+
+.tg-form__legal {
+	margin: 0;
+	font-size: .8rem;
+	line-height: 1.55;
+	color: var(--tg-muted);
+}
+
+.tg-auth__switch {
+	margin: 1.4rem 0 0;
+	padding-top: 1.2rem;
+	border-top: 1px solid var(--tg-line-soft);
+	font-size: .92rem;
+	color: var(--tg-ink-soft);
+}
+.tg-auth__switch a { color: var(--tg-accent); font-weight: 700; text-decoration: none; }
+.tg-auth__switch a:hover { text-decoration: underline; }
+
+.tg-auth__side {
+	padding: 1.6rem;
+	background: var(--tg-sand);
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+}
+.tg-auth__side h2 {
+	margin: 0 0 1rem;
+	font-size: 1.02rem;
+	color: var(--tg-ink);
+}
+.tg-auth__demo {
+	margin-top: 1.4rem;
+	padding-top: 1.2rem;
+	border-top: 1px solid var(--tg-line);
+}
+.tg-auth__demo h3 { margin: 0 0 .4rem; font-size: .84rem; text-transform: uppercase; letter-spacing: .05em; color: var(--tg-muted); }
+.tg-auth__demo p  { margin: 0 0 .35rem; font-size: .86rem; color: var(--tg-ink-soft); }
+.tg-auth__demo code {
+	padding: .12em .45em;
+	background: #fff;
+	border: 1px solid var(--tg-line);
+	border-radius: 3px;
+	font-size: .84em;
+	color: var(--tg-ink);
+	word-break: break-all;
+}
+
+.tg-steps { list-style: none; counter-reset: tg 0; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.tg-steps li {
+	counter-increment: tg;
+	position: relative;
+	padding-left: 2.2rem;
+}
+.tg-steps li::before {
+	content: counter(tg);
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 1.6rem;
+	height: 1.6rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--tg-ink);
+	color: #fff;
+	border-radius: 50%;
+	font-size: .78rem;
+	font-weight: 700;
+}
+.tg-steps strong { display: block; font-size: .92rem; color: var(--tg-ink); }
+.tg-steps span   { display: block; font-size: .84rem; line-height: 1.5; color: var(--tg-muted); }
+
+/* -------------------------------------------------------------- notices */
+
+.tg-notice {
+	padding: .9rem 1.1rem;
+	margin-bottom: 1.2rem;
+	border-radius: var(--tg-radius);
+	border-left: 3px solid;
+	font-size: .92rem;
+	line-height: 1.55;
+}
+.tg-notice--error   { background: var(--tg-red-bg);   border-color: var(--tg-accent); color: #7d0c21; }
+.tg-notice--success { background: var(--tg-green-bg); border-color: var(--tg-teal);   color: #0c4f47; }
+
+/* ------------------------------------------------------------ dashboard */
+
+.tg-dash__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 1rem;
+	padding-bottom: 1.3rem;
+	margin-bottom: 1.6rem;
+	border-bottom: 2px solid var(--tg-line-soft);
+}
+.tg-dash__eyebrow {
+	margin: 0 0 .3rem;
+	font-size: .76rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: .08em;
+	color: var(--tg-accent);
+}
+.tg-dash__head h1 {
+	margin: 0 0 .3rem;
+	font-size: clamp(1.4rem, 1.15rem + 1.1vw, 2.05rem);
+	line-height: 1.25;
+	color: var(--tg-ink);
+}
+.tg-dash__sub { margin: 0; font-size: .9rem; color: var(--tg-muted); }
+
+.tg-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+	gap: 1rem;
+	margin-bottom: 2.2rem;
+}
+.tg-stat {
+	padding: 1.2rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-left: 3px solid var(--tg-ink);
+	border-radius: var(--tg-radius);
+	box-shadow: var(--tg-shadow);
+}
+.tg-stat strong {
+	display: block;
+	font-size: clamp(1.5rem, 1.3rem + .8vw, 1.95rem);
+	line-height: 1.15;
+	color: var(--tg-ink);
+}
+.tg-stat span {
+	display: block;
+	margin-top: .25rem;
+	font-size: .8rem;
+	line-height: 1.4;
+	color: var(--tg-muted);
+}
+.tg-stats--band .tg-stat { border-left-color: var(--tg-accent); }
+
+.tg-dash__section { margin-bottom: 2.4rem; }
+.tg-dash__section > h2,
+.tg-dash__sectionhead h2 {
+	margin: 0 0 1.1rem;
+	font-size: 1.2rem;
+	color: var(--tg-ink);
+}
+.tg-dash__sectionhead {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: .8rem;
+	margin-bottom: 1.1rem;
+}
+.tg-dash__sectionhead h2 { margin: 0; }
+
+.tg-profile {
+	display: grid;
+	gap: 1.6rem;
+	padding: 1.6rem;
+	background: var(--tg-surface);
+	border: 1px solid var(--tg-line);
+	border-radius: var(--tg-radius);
+	box-shadow: var(--tg-shadow);
+	margin-bottom: .8rem;
+}
+@media (min-width: 820px) {
+	.tg-profile { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+}
+.tg-profile__sectors h3 { margin: 0 0 .7rem; font-size: .82rem; text-transform: uppercase; letter-spacing: .05em; color: var(--tg-muted); }
+
+.tg-taglist { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4rem; }
+.tg-taglist li {
+	padding: .3em .75em;
+	background: var(--tg-canvas);
+	border: 1px solid var(--tg-line);
+	border-radius: 100px;
+	font-size: .8rem;
+	color: var(--tg-ink);
+}
+
+/* -------------------------------------------------------------- watchlist */
+
+.tg-save .tg-save__on  { display: none; }
+.tg-save.is-saved .tg-save__on  { display: inline; }
+.tg-save.is-saved .tg-save__off { display: none; }
+.tg-save.is-saved {
+	border-color: var(--tg-teal);
+	color: var(--tg-teal);
+	background: var(--tg-green-bg);
+}
+.tg-save--error { border-color: var(--tg-accent); color: var(--tg-accent); }
+
+/* ------------------------------------------------------------ empty state */
+
+.tg-empty {
+	padding: 2.4rem 1.6rem;
+	text-align: center;
+	background: var(--tg-surface);
+	border: 1px dashed var(--tg-line);
+	border-radius: var(--tg-radius);
+}
+.tg-empty h2,
+.tg-empty h3 { margin: 0 0 .6rem; font-size: 1.15rem; color: var(--tg-ink); }
+.tg-empty p  { margin: 0 auto 1.2rem; max-width: 52ch; font-size: .94rem; line-height: 1.6; color: var(--tg-ink-soft); }
+.tg-empty p:last-child { margin-bottom: 0; }
+.tg-empty .tg-locked__actions { justify-content: center; }
+.tg-empty--page { padding: 3.5rem 1.6rem; }
