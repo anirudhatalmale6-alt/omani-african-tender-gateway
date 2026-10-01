@@ -67,20 +67,40 @@ class TG_API {
 			return is_scalar( $node ) ? $node : $default;
 		};
 
-		$description = (string) $get( 'description' );
-		$summary     = (string) $get( 'summary' );
+		$raw_title       = (string) $get( 'title' );
+		$raw_description = (string) $get( 'description' );
+
+		// Feeds that answer from a search index hand back their own hit
+		// highlighting. Tenders On Time double-escapes it, so a title arrives as
+		// "Supply of &lt;em&gt;Medical&lt;/em&gt; Equipment" and would print those
+		// tags on screen as literal text. Decode once, then strip.
+		$description = self::plain( $raw_description );
+		$summary     = self::plain( (string) $get( 'summary' ) );
 
 		if ( '' === $summary && '' !== $description ) {
-			$summary = wp_trim_words( wp_strip_all_tags( $description ), 32, '...' );
+			$summary = wp_trim_words( $description, 32, '...' );
+		}
+
+		// That same highlighting is the only sector signal in the feed - the
+		// account's keywords are configured at the vendor's end and the record
+		// carries no category of its own (cpv comes back empty on every row).
+		// The emphasised word IS the term their index matched, so it is the
+		// source's classification rather than a guess of mine.
+		$sector = (string) $get( 'sector' );
+		if ( '' === $sector ) {
+			$sector = self::highlighted_term( $raw_title . ' ' . $raw_description );
 		}
 
 		$tender = array(
 			'id'          => (string) $get( 'id' ),
 			'reference'   => (string) $get( 'reference' ),
-			'title'       => (string) $get( 'title' ),
-			'buyer'       => (string) $get( 'buyer' ),
+			// Some records arrive with the whole scope of works in the title
+			// field - 250+ characters that break a card layout. Trim for
+			// display; the full text is still there in the description.
+			'title'       => wp_trim_words( self::plain( $raw_title ), 18, '...' ),
+			'buyer'       => self::plain( (string) $get( 'buyer' ) ),
 			'country'     => (string) $get( 'country' ),
-			'sector'      => (string) $get( 'sector' ),
+			'sector'      => $sector,
 			'summary'     => $summary,
 			'description' => $description,
 			'value'       => self::number( $get( 'value', 0 ) ),
@@ -94,11 +114,73 @@ class TG_API {
 			'eligibility' => isset( $row['eligibility'] ) && is_array( $row['eligibility'] ) ? $row['eligibility'] : array(),
 		);
 
+		// Most feeds do not nest the buyer's contact details or the notice file
+		// under "contact"/"documents" - they sit as flat columns on the record.
+		// Without these the members-only half of a tender page is empty, which
+		// is exactly the part the access gate exists to protect.
+		if ( ! $tender['contact'] ) {
+			$contact = array(
+				'email'   => self::plain( (string) $get( 'contact_email' ) ),
+				'website' => (string) $get( 'contact_website' ),
+				'address' => self::plain( (string) $get( 'contact_address' ) ),
+			);
+			$tender['contact'] = array_filter( $contact );
+		}
+
+		if ( ! $tender['documents'] ) {
+			$doc = trim( (string) $get( 'document_url' ) );
+			if ( '' !== $doc ) {
+				$tender['documents'] = array(
+					array(
+						'title' => __( 'Official tender notice', 'tender-gateway' ),
+						'url'   => $doc,
+					),
+				);
+			}
+		}
+
 		if ( '' === $tender['id'] ) {
 			$tender['id'] = substr( md5( $tender['title'] . $tender['reference'] . $tender['buyer'] ), 0, 12 );
 		}
 
 		return $tender;
+	}
+
+	/**
+	 * Readable text out of a feed value that may carry escaped markup.
+	 *
+	 * Decoded once, not in a loop: one pass turns "&lt;em&gt;" into a tag that
+	 * strip_all_tags removes, while a legitimate "R&amp;D" becomes "R&D" and
+	 * stops there. Repeating the decode would start eating real ampersands.
+	 */
+	public static function plain( $text ) {
+		$text = html_entity_decode( (string) $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$text = wp_strip_all_tags( $text );
+
+		return trim( preg_replace( '/\s+/u', ' ', $text ) );
+	}
+
+	/**
+	 * The term a search-backed feed emphasised in its own hit highlighting.
+	 * Returns '' when the feed did not highlight anything.
+	 */
+	public static function highlighted_term( $text ) {
+		$text = html_entity_decode( (string) $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+		if ( ! preg_match( '#<(em|strong|b)[^>]*>(.*?)</\1>#is', $text, $match ) ) {
+			return '';
+		}
+
+		$term = self::plain( $match[2] );
+
+		// Guard against a feed that highlights half a sentence.
+		if ( '' === $term || str_word_count( $term ) > 3 ) {
+			return '';
+		}
+
+		return function_exists( 'mb_convert_case' )
+			? mb_convert_case( $term, MB_CASE_TITLE, 'UTF-8' )
+			: ucwords( strtolower( $term ) );
 	}
 
 	/**
@@ -186,7 +268,7 @@ class TG_API {
 	/**
 	 * Filtered, sorted list.
 	 *
-	 * @param array $args country, sector, search, closing_days, sort, per_page, page
+	 * @param array $args country, sector, search, closing_days, published_on, sort, per_page, page
 	 */
 	public static function query( $args = array() ) {
 		$args = wp_parse_args( $args, array(
@@ -194,6 +276,7 @@ class TG_API {
 			'sector'       => '',
 			'search'       => '',
 			'closing_days' => 0,
+			'published_on' => '',
 			'sort'         => 'deadline',
 			'per_page'     => 9,
 			'page'         => 1,
@@ -218,6 +301,15 @@ class TG_API {
 			if ( $args['closing_days'] > 0 ) {
 				$days = self::days_left( $tender );
 				if ( null === $days || $days > (int) $args['closing_days'] || $days < 0 ) {
+					continue;
+				}
+			}
+			// An exact posting date, not a window: picking a day the feed has
+			// nothing for has to return nothing. Both sides are already
+			// normalised to Y-m-d by self::date(), so compare as strings and
+			// avoid strtotime turning an unparseable value into "today".
+			if ( '' !== $args['published_on'] ) {
+				if ( $tender['published'] !== $args['published_on'] ) {
 					continue;
 				}
 			}

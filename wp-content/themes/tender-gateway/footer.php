@@ -42,7 +42,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 		<div class="tgt-footer__base">
 			<p>&copy; <?php echo esc_html( gmdate( 'Y' ) ); ?> <?php bloginfo( 'name' ); ?>. Prototype prepared for Ministry review.</p>
-			<p class="tgt-footer__note">Tender data shown in this prototype is illustrative and is served through the gateway's tender API integration layer.</p>
+			<?php
+			// Once the site is pulling real records this line has to stop calling
+			// them illustrative - saying "sample data" underneath live Rwandan
+			// tenders misleads a reader just as badly as the reverse would.
+			$tgt_live = class_exists( 'TG_API' ) && TG_API::is_live();
+			?>
+			<p class="tgt-footer__note">
+				<?php if ( $tgt_live ) : ?>
+					Tender data is received from TendersOnTime through the gateway's tender API integration layer and refreshed automatically.
+				<?php else : ?>
+					Tender data shown in this prototype is illustrative and is served through the gateway's tender API integration layer.
+				<?php endif; ?>
+			</p>
 		</div>
 	</div>
 </footer>

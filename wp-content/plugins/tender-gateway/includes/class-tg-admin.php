@@ -106,6 +106,12 @@ class TG_Admin {
 		$was_live = 'remote' === $settings['source'];
 		$now_live = isset( $post['source'] ) && 'remote' === $post['source'];
 
+		// Leaving demonstration mode retires the demo supplier account, whose
+		// password is published in the source repository.
+		if ( $now_live ) {
+			TG_Install::source_changed( 'remote' );
+		}
+
 		update_option( 'tg_settings', array(
 			'source'         => $now_live ? 'remote' : 'sample',
 			// esc_url_raw strips the {date} placeholder's braces, so keep the raw

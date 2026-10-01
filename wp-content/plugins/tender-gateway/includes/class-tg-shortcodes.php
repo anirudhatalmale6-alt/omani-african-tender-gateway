@@ -64,11 +64,22 @@ class TG_Shortcodes {
 		$get     = function ( $key, $default = '' ) {
 			return isset( $_GET[ $key ] ) ? sanitize_text_field( wp_unslash( $_GET[ $key ] ) ) : $default;
 		};
+		// Only accept a real Y-m-d; anything else is treated as "no date chosen"
+		// rather than silently returning an empty listing.
+		$published_on = $get( 'published_on' );
+		if ( $published_on ) {
+			$parts = explode( '-', $published_on );
+			if ( 3 !== count( $parts ) || ! checkdate( (int) $parts[1], (int) $parts[2], (int) $parts[0] ) ) {
+				$published_on = '';
+			}
+		}
+
 		$results = TG_API::query( array(
 			'country'      => $get( 'country' ),
 			'sector'       => $get( 'sector' ),
 			'search'       => $get( 's_tender' ),
 			'closing_days' => (int) $get( 'closing', 0 ),
+			'published_on' => $published_on,
 			'sort'         => $get( 'sort', 'deadline' ),
 			'per_page'     => (int) $atts['per_page'],
 			'page'         => max( 1, (int) $get( 'tpage', 1 ) ),
@@ -77,11 +88,12 @@ class TG_Shortcodes {
 		return self::render( 'tenders-archive', array(
 			'results' => $results,
 			'filters' => array(
-				'country' => $get( 'country' ),
-				'sector'  => $get( 'sector' ),
-				'search'  => $get( 's_tender' ),
-				'closing' => (int) $get( 'closing', 0 ),
-				'sort'    => $get( 'sort', 'deadline' ),
+				'country'      => $get( 'country' ),
+				'sector'       => $get( 'sector' ),
+				'search'       => $get( 's_tender' ),
+				'closing'      => (int) $get( 'closing', 0 ),
+				'published_on' => $published_on,
+				'sort'         => $get( 'sort', 'deadline' ),
 			),
 		) );
 	}
@@ -118,7 +130,11 @@ class TG_Shortcodes {
 			'sort'     => $atts['sort'],
 		) );
 
-		return self::render( 'tender-grid', array( 'tenders' => $results['items'] ) );
+		// The homepage grid used to render bare cards, so a fallback to sample
+		// data looked identical to a live feed. Carry the provenance line here
+		// too - the archive has always had it.
+		return self::render( 'source-badge' )
+			. self::render( 'tender-grid', array( 'tenders' => $results['items'] ) );
 	}
 
 	public static function stats() {

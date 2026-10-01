@@ -59,6 +59,11 @@ $base      = tg_page_url( 'tenders' );
 			</label>
 
 			<label class="tg-field">
+				<span>Published on</span>
+				<input type="date" name="published_on" value="<?php echo esc_attr( $filters['published_on'] ); ?>">
+			</label>
+
+			<label class="tg-field">
 				<span>Sort by</span>
 				<select name="sort">
 					<option value="deadline" <?php selected( $filters['sort'], 'deadline' ); ?>>Closing soonest</option>
@@ -68,7 +73,7 @@ $base      = tg_page_url( 'tenders' );
 			</label>
 
 			<button type="submit" class="tg-btn tg-btn--primary">Apply filters</button>
-			<?php if ( $filters['search'] || $filters['country'] || $filters['sector'] || $filters['closing'] ) : ?>
+			<?php if ( $filters['search'] || $filters['country'] || $filters['sector'] || $filters['closing'] || $filters['published_on'] ) : ?>
 				<a class="tg-btn tg-btn--ghost" href="<?php echo esc_url( $base ); ?>">Reset</a>
 			<?php endif; ?>
 		</div>
@@ -84,8 +89,13 @@ $base      = tg_page_url( 'tenders' );
 
 	<?php if ( ! $results['items'] ) : ?>
 		<div class="tg-empty">
-			<h3>No tenders match those filters</h3>
-			<p>Try widening the country or sector, or clear the filters to see every open opportunity.</p>
+			<?php if ( $filters['published_on'] ) : ?>
+				<h3>No tenders published on <?php echo esc_html( mysql2date( get_option( 'date_format' ), $filters['published_on'] ) ); ?></h3>
+				<p>Nothing was received for that date. Try a different date, or clear the filters to see every open opportunity.</p>
+			<?php else : ?>
+				<h3>No tenders match those filters</h3>
+				<p>Try widening the country or sector, or clear the filters to see every open opportunity.</p>
+			<?php endif; ?>
 			<a class="tg-btn tg-btn--primary" href="<?php echo esc_url( $base ); ?>">Show all tenders</a>
 		</div>
 	<?php else : ?>
@@ -96,11 +106,12 @@ $base      = tg_page_url( 'tenders' );
 		<nav class="tg-pagination" aria-label="Tender pages">
 			<?php
 			$query_base = array_filter( array(
-				's_tender' => $filters['search'],
-				'country'  => $filters['country'],
-				'sector'   => $filters['sector'],
-				'closing'  => $filters['closing'] ? $filters['closing'] : '',
-				'sort'     => $filters['sort'],
+				's_tender'     => $filters['search'],
+				'country'      => $filters['country'],
+				'sector'       => $filters['sector'],
+				'closing'      => $filters['closing'] ? $filters['closing'] : '',
+				'published_on' => $filters['published_on'],
+				'sort'         => $filters['sort'],
 			) );
 
 			for ( $i = 1; $i <= $results['pages']; $i++ ) :

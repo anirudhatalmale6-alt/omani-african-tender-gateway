@@ -14,12 +14,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_Store {
 
-	const DB_VERSION = '1.0.0';
+	const DB_VERSION = '1.1.0';
 
 	public static function table() {
 		global $wpdb;
 
 		return $wpdb->prefix . 'tg_tenders';
+	}
+
+	/**
+	 * Status changes, one row per move. Written by TG_Tender::move() only.
+	 */
+	public static function events_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_tender_events';
+	}
+
+	/**
+	 * Uploaded files. Built once here and attached to tenders, suppliers and
+	 * (from M2) bids, rather than three separate upload implementations.
+	 */
+	public static function docs_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_documents';
 	}
 
 	public static function install() {
@@ -51,15 +70,75 @@ class TG_Store {
 			source_name VARCHAR(190) NOT NULL DEFAULT '',
 			extra LONGTEXT NULL,
 			synced_at DATETIME NULL,
+			owner_id BIGINT UNSIGNED NULL,
+			status VARCHAR(32) NOT NULL DEFAULT '',
+			quantity VARCHAR(190) NOT NULL DEFAULT '',
+			unit VARCHAR(60) NOT NULL DEFAULT '',
+			specifications LONGTEXT NULL,
+			delivery_location VARCHAR(255) NOT NULL DEFAULT '',
+			opening_at DATETIME NULL,
+			closing_at DATETIME NULL,
+			status_reason TEXT NULL,
+			created_at DATETIME NULL,
+			updated_at DATETIME NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY source_external (source, external_id),
 			KEY deadline (deadline),
 			KEY country (country),
 			KEY sector (sector),
-			KEY published (published)
+			KEY published (published),
+			KEY status (status),
+			KEY owner_id (owner_id),
+			KEY closing_at (closing_at),
+			KEY opening_at (opening_at)
 		) {$collate};";
 
 		dbDelta( $sql );
+
+		$events = self::events_table();
+
+		$sql_events = "CREATE TABLE {$events} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			tender_id BIGINT UNSIGNED NOT NULL,
+			actor_id BIGINT UNSIGNED NULL,
+			from_status VARCHAR(32) NOT NULL DEFAULT '',
+			to_status VARCHAR(32) NOT NULL DEFAULT '',
+			reason TEXT NULL,
+			created_at DATETIME NULL,
+			PRIMARY KEY  (id),
+			KEY tender_id (tender_id),
+			KEY created_at (created_at)
+		) {$collate};";
+
+		dbDelta( $sql_events );
+
+		$docs = self::docs_table();
+
+		// owner_type keeps tender, supplier and bid attachments in one table
+		// without three sets of upload code.
+		//
+		// `path` is relative to the protected upload directory, NOT a public
+		// URL. CR certificates and tender specifications are confidential, so
+		// files are served through a permission-checked download endpoint and
+		// never by a guessable link into wp-content/uploads.
+		$sql_docs = "CREATE TABLE {$docs} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			owner_type VARCHAR(20) NOT NULL DEFAULT '',
+			owner_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			uploaded_by BIGINT UNSIGNED NULL,
+			label VARCHAR(190) NOT NULL DEFAULT '',
+			path VARCHAR(255) NOT NULL DEFAULT '',
+			filename VARCHAR(255) NOT NULL DEFAULT '',
+			mime VARCHAR(100) NOT NULL DEFAULT '',
+			filesize BIGINT UNSIGNED NOT NULL DEFAULT 0,
+			token VARCHAR(40) NOT NULL DEFAULT '',
+			created_at DATETIME NULL,
+			PRIMARY KEY  (id),
+			KEY owner (owner_type, owner_id),
+			KEY token (token)
+		) {$collate};";
+
+		dbDelta( $sql_docs );
 
 		update_option( 'tg_db_version', self::DB_VERSION );
 	}

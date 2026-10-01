@@ -18,6 +18,10 @@ define( 'TG_URL', plugin_dir_url( __FILE__ ) );
 
 require_once TG_PATH . 'includes/class-tg-sample-data.php';
 require_once TG_PATH . 'includes/class-tg-store.php';
+require_once TG_PATH . 'includes/class-tg-status.php';
+require_once TG_PATH . 'includes/class-tg-tender.php';
+require_once TG_PATH . 'includes/class-tg-docs.php';
+require_once TG_PATH . 'includes/class-tg-admin-tenders.php';
 require_once TG_PATH . 'includes/class-tg-sync.php';
 require_once TG_PATH . 'includes/class-tg-api.php';
 require_once TG_PATH . 'includes/class-tg-router.php';
@@ -65,6 +69,12 @@ function tg_default_settings() {
 			'method'      => 'method',
 			'reference'   => 'reference',
 			'source_name' => 'source',
+			// Flat alternatives to the nested contact/documents blocks. Left
+			// empty by default so a feed that already nests them is unaffected.
+			'contact_email'   => '',
+			'contact_website' => '',
+			'contact_address' => '',
+			'document_url'    => '',
 		),
 	);
 }
@@ -158,6 +168,56 @@ add_action( 'plugins_loaded', function () {
 	TG_Shortcodes::init();
 	TG_Admin::init();
 	TG_Sync::init();
+	TG_Docs::init();
+	TG_Admin_Tenders::init();
+
+	// Schema changes ship with plugin updates, so apply them on load rather
+	// than only on activation - an updated plugin is rarely reactivated.
+	TG_Store::maybe_install();
+} );
+
+/**
+ * Scheduled opening and automatic closing.
+ *
+ * Correctness does not depend on this running on time: TG_Tender::accepts_bids()
+ * re-checks the closing time on every submission, so a late cron can delay the
+ * status flip but can never let a late bid through. This keeps the displayed
+ * status honest.
+ */
+add_filter( 'cron_schedules', function ( $schedules ) {
+	if ( ! isset( $schedules['tg_five_minutes'] ) ) {
+		$schedules['tg_five_minutes'] = array(
+			'interval' => 300,
+			'display'  => 'Every five minutes (Tender Gateway)',
+		);
+	}
+
+	return $schedules;
+} );
+
+add_action( 'init', function () {
+	if ( ! wp_next_scheduled( 'tg_run_schedule' ) ) {
+		wp_schedule_event( time() + 60, 'tg_five_minutes', 'tg_run_schedule' );
+	}
+} );
+
+add_action( 'tg_run_schedule', array( 'TG_Tender', 'run_schedule' ) );
+
+// Safety net: if cron is disabled or unreliable on the host, an admin opening
+// the tender screens still sees accurate statuses.
+add_action( 'admin_init', function () {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+
+	$last = (int) get_transient( 'tg_schedule_ran' );
+
+	if ( $last ) {
+		return;
+	}
+
+	set_transient( 'tg_schedule_ran', time(), 300 );
+	TG_Tender::run_schedule();
 } );
 
 add_action( 'wp_enqueue_scripts', function () {
@@ -172,5 +232,6 @@ add_action( 'wp_enqueue_scripts', function () {
 register_activation_hook( __FILE__, array( 'TG_Install', 'activate' ) );
 register_deactivation_hook( __FILE__, function () {
 	TG_Sync::clear_schedule();
+	wp_clear_scheduled_hook( 'tg_run_schedule' );
 	flush_rewrite_rules();
 } );
