@@ -35,14 +35,21 @@ class TG_Tender {
 	/**
 	 * Next reference in the JT-{year}-{sequence} series.
 	 *
-	 * Derived from the highest existing reference for the year rather than from
-	 * a row count, so deleting a tender cannot cause a reference to be reused.
+	 * The sequence is held in an option that only ever moves forward, because
+	 * deriving it from the table alone is not safe: deleting the most recent
+	 * tender would hand its number straight to the next one, and two different
+	 * tenders sharing a reference is precisely the sort of thing that gets
+	 * argued about after an award.
+	 *
+	 * The table is still consulted as a floor, so a restored database that lost
+	 * the option cannot start issuing references that already exist.
 	 */
 	public static function next_reference() {
 		global $wpdb;
 
 		$year   = (int) current_time( 'Y' );
 		$prefix = 'JT-' . $year . '-';
+		$option = 'tg_reference_seq_' . $year;
 
 		$highest = $wpdb->get_var( $wpdb->prepare(
 			"SELECT external_id FROM " . TG_Store::table() . "
@@ -52,11 +59,16 @@ class TG_Tender {
 			$wpdb->esc_like( $prefix ) . '%'
 		) );
 
-		$next = 1;
+		$in_table = 0;
 
 		if ( $highest && preg_match( '/(\d+)$/', $highest, $m ) ) {
-			$next = (int) $m[1] + 1;
+			$in_table = (int) $m[1];
 		}
+
+		$issued = (int) get_option( $option, 0 );
+		$next   = max( $in_table, $issued ) + 1;
+
+		update_option( $option, $next, false );
 
 		return $prefix . str_pad( (string) $next, 4, '0', STR_PAD_LEFT );
 	}
@@ -88,6 +100,17 @@ class TG_Tender {
 		) );
 
 		$ok = $wpdb->insert( TG_Store::table(), $row );
+
+		// Two people creating a tender in the same instant would both be handed
+		// the same reference; the unique key rejects the loser, so take the next
+		// one and try again rather than failing in front of the user.
+		$attempts = 0;
+
+		while ( ! $ok && $attempts < 3 ) {
+			$attempts++;
+			$row['external_id'] = self::next_reference();
+			$ok                 = $wpdb->insert( TG_Store::table(), $row );
+		}
 
 		if ( ! $ok ) {
 			return new WP_Error( 'tg_tender_insert', 'Could not save the tender.' );
@@ -184,6 +207,15 @@ class TG_Tender {
 		 * bid alerts in M2, award mails in M3, and so on.
 		 */
 		do_action( 'tg_tender_status_changed', (int) $id, $from, $to, (int) $actor_id, $reason );
+
+		// A tender approved without a scheduled opening time opens immediately.
+		// This belongs here rather than in the admin screen: approval will also
+		// come from the buyer portal in M5 and potentially from an API, and a
+		// tender that stayed Approved for ever would be invisible to suppliers
+		// while looking perfectly healthy in the admin list.
+		if ( TG_Status::APPROVED === $to && empty( $tender['opening_at'] ) ) {
+			self::move( $id, TG_Status::OPEN, $actor_id, 'Opened on approval - no scheduled opening time was set.' );
+		}
 
 		return true;
 	}

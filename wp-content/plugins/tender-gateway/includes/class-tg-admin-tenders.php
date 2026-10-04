@@ -19,7 +19,12 @@ class TG_Admin_Tenders {
 	const EDIT_SLUG = 'tg-tender-edit';
 
 	public static function init() {
-		add_action( 'admin_menu', array( __CLASS__, 'menu' ), 9 );
+		// Priority 11: the parent "tender-gateway" menu is registered by
+		// TG_Admin at the default 10, and a submenu added before its parent
+		// exists is silently dropped - the page then 403s with "you are not
+		// allowed to access this page", which looks like a permissions fault
+		// rather than an ordering one.
+		add_action( 'admin_menu', array( __CLASS__, 'menu' ), 11 );
 		add_action( 'admin_post_tg_tender_save', array( __CLASS__, 'handle_save' ) );
 		add_action( 'admin_post_tg_tender_move', array( __CLASS__, 'handle_move' ) );
 		add_action( 'admin_post_tg_tender_doc_delete', array( __CLASS__, 'handle_doc_delete' ) );
@@ -397,7 +402,7 @@ class TG_Admin_Tenders {
 		echo '</select></p>';
 		echo '<p><label for="tg_reason">Reason</label><br>';
 		echo '<textarea name="reason" id="tg_reason" rows="2" class="large-text" style="max-width:640px;"></textarea>';
-		echo '<span class="description">Required when rejecting or cancelling. Recorded against the tender permanently.</span></p>';
+		echo '<br><span class="description">Required when rejecting or cancelling. Recorded against the tender permanently.</span></p>';
 
 		submit_button( 'Apply', 'secondary' );
 		echo '</form>';
@@ -513,18 +518,18 @@ class TG_Admin_Tenders {
 			self::redirect( self::edit_url( $id ), 'error', $result->get_error_message() );
 		}
 
-		// Approving a tender with no scheduled opening time opens it at once -
-		// otherwise it would sit invisible waiting for a scheduler that has
-		// nothing to wait for.
+		// Opening on approval is handled inside TG_Tender::move(), so every
+		// route into approval behaves the same. Report whatever it settled on.
 		$tender = TG_Tender::get( $id );
+		$landed = $tender ? $tender['status'] : $to;
 
-		if ( TG_Status::APPROVED === $to && $tender && empty( $tender['opening_at'] ) ) {
-			TG_Tender::move( $id, TG_Status::OPEN, get_current_user_id(), 'Opened on approval - no scheduled opening time set.' );
-
-			self::redirect( self::edit_url( $id ), 'success', 'Tender approved and opened for bidding.' );
-		}
-
-		self::redirect( self::edit_url( $id ), 'success', 'Tender moved to ' . TG_Status::label( $to ) . '.' );
+		self::redirect(
+			self::edit_url( $id ),
+			'success',
+			TG_Status::OPEN === $landed && TG_Status::APPROVED === $to
+				? 'Tender approved and opened for bidding.'
+				: 'Tender moved to ' . TG_Status::label( $landed ) . '.'
+		);
 	}
 
 	public static function handle_doc_delete() {
