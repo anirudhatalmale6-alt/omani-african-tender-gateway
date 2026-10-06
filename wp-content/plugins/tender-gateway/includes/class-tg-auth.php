@@ -202,7 +202,15 @@ class TG_Auth {
 		update_user_meta( $user_id, 'tg_cr', $cr );
 		update_user_meta( $user_id, 'tg_country', $country ? $country : 'Oman' );
 		update_user_meta( $user_id, 'tg_sectors', $sectors );
-		update_user_meta( $user_id, 'tg_status', 'verified' );
+
+		// New suppliers start unverified. They can sign in and browse tender
+		// headlines immediately, but an administrator approves the account
+		// before they can bid on anything. Auto-verifying was fine for the
+		// demonstration site; it is not fine on a platform where bidding
+		// commits a real company to a real price.
+		update_user_meta( $user_id, 'tg_status', 'pending' );
+
+		do_action( 'tg_supplier_registered', $user_id );
 
 		wp_set_current_user( $user_id );
 		wp_set_auth_cookie( $user_id, true, is_ssl() );

@@ -21,6 +21,8 @@ require_once TG_PATH . 'includes/class-tg-store.php';
 require_once TG_PATH . 'includes/class-tg-status.php';
 require_once TG_PATH . 'includes/class-tg-tender.php';
 require_once TG_PATH . 'includes/class-tg-docs.php';
+require_once TG_PATH . 'includes/class-tg-access.php';
+require_once TG_PATH . 'includes/class-tg-bid.php';
 require_once TG_PATH . 'includes/class-tg-admin-tenders.php';
 require_once TG_PATH . 'includes/class-tg-sync.php';
 require_once TG_PATH . 'includes/class-tg-api.php';
@@ -169,6 +171,8 @@ add_action( 'plugins_loaded', function () {
 	TG_Admin::init();
 	TG_Sync::init();
 	TG_Docs::init();
+	TG_Access::init();
+	TG_Bid::init();
 	TG_Admin_Tenders::init();
 
 	// Schema changes ship with plugin updates, so apply them on load rather

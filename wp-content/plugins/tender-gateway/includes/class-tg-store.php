@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_Store {
 
-	const DB_VERSION = '1.1.0';
+	const DB_VERSION = '1.2.0';
 
 	public static function table() {
 		global $wpdb;
@@ -39,6 +39,15 @@ class TG_Store {
 		global $wpdb;
 
 		return $wpdb->prefix . 'tg_documents';
+	}
+
+	/**
+	 * Supplier bids. One live bid per supplier per tender.
+	 */
+	public static function bids_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_bids';
 	}
 
 	public static function install() {
@@ -139,6 +148,34 @@ class TG_Store {
 		) {$collate};";
 
 		dbDelta( $sql_docs );
+
+		$bids = self::bids_table();
+
+		// One live bid per supplier per tender, enforced by the unique key so a
+		// double submission cannot create two competing prices from one company.
+		// Amounts are DECIMAL rather than DOUBLE: a bid is money, and OMR runs
+		// to three decimal places, so float rounding is not acceptable here.
+		$sql_bids = "CREATE TABLE {$bids} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			tender_id BIGINT UNSIGNED NOT NULL,
+			supplier_id BIGINT UNSIGNED NOT NULL,
+			price DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			currency VARCHAR(12) NOT NULL DEFAULT 'OMR',
+			delivery_days INT UNSIGNED NULL,
+			validity_days INT UNSIGNED NULL,
+			notes LONGTEXT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'submitted',
+			status_reason TEXT NULL,
+			submitted_at DATETIME NULL,
+			updated_at DATETIME NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY tender_supplier (tender_id, supplier_id),
+			KEY tender_id (tender_id),
+			KEY supplier_id (supplier_id),
+			KEY status (status)
+		) {$collate};";
+
+		dbDelta( $sql_bids );
 
 		update_option( 'tg_db_version', self::DB_VERSION );
 	}
