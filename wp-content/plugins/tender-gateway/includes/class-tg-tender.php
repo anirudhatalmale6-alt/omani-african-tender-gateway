@@ -401,7 +401,57 @@ class TG_Tender {
 			}
 		}
 
+		// Record the run so the admin can see the scheduler is alive. With
+		// outgoing mail disabled on this hosting there is no way to be told
+		// when a scheduled task stops firing, so the platform has to show it.
+		update_option( 'tg_schedule_last_run', time(), false );
+
+		if ( $moved['opened'] || $moved['closed'] ) {
+			update_option( 'tg_schedule_last_change', array(
+				'at'     => time(),
+				'opened' => $moved['opened'],
+				'closed' => $moved['closed'],
+			), false );
+		}
+
 		return $moved;
+	}
+
+	/**
+	 * Health of the scheduled task, for the admin overview.
+	 *
+	 * "Stale" is judged generously - the recommended task runs every five
+	 * minutes, so an hour of silence is a genuine problem rather than a blip,
+	 * and a warning that cries wolf gets ignored.
+	 *
+	 * @return array{state: string, label: string, detail: string}
+	 */
+	public static function schedule_health() {
+		$last = (int) get_option( 'tg_schedule_last_run', 0 );
+
+		if ( ! $last ) {
+			return array(
+				'state'  => 'unknown',
+				'label'  => 'Not yet run',
+				'detail' => 'The scheduler has not run yet. It will start once the site receives a visit or the hosting scheduled task fires.',
+			);
+		}
+
+		$ago = time() - $last;
+
+		if ( $ago > HOUR_IN_SECONDS ) {
+			return array(
+				'state'  => 'stale',
+				'label'  => 'Last run ' . human_time_diff( $last ) . ' ago',
+				'detail' => 'Tenders may not be opening or closing on time. Check the scheduled task in your hosting control panel.',
+			);
+		}
+
+		return array(
+			'state'  => 'ok',
+			'label'  => 'Last run ' . human_time_diff( $last ) . ' ago',
+			'detail' => 'Automatic opening and closing is running normally.',
+		);
 	}
 
 	/**

@@ -142,6 +142,36 @@ class TG_Admin_Tenders {
 		}
 
 		echo '</div>';
+
+		self::render_schedule_health();
+	}
+
+	/**
+	 * Scheduler status line.
+	 *
+	 * Outgoing mail is disabled on this hosting, so nobody can be emailed when
+	 * the scheduled task stops firing. Showing it here is the only way an
+	 * administrator finds out before a tender fails to close on time.
+	 */
+	private static function render_schedule_health() {
+		$health = TG_Tender::schedule_health();
+
+		$colours = array(
+			'ok'      => array( '#2f7d4a', '#eef7f0' ),
+			'stale'   => array( '#c2502a', '#fdf2ee' ),
+			'unknown' => array( '#8a6d1f', '#fdf8e7' ),
+		);
+
+		list( $border, $background ) = isset( $colours[ $health['state'] ] ) ? $colours[ $health['state'] ] : $colours['unknown'];
+
+		printf(
+			'<div style="margin-top:10px;padding:8px 10px;border-left:3px solid %s;background:%s;font-size:12px;">'
+			. '<strong>Automatic tender scheduling:</strong> %s. %s</div>',
+			esc_attr( $border ),
+			esc_attr( $background ),
+			esc_html( $health['label'] ),
+			esc_html( $health['detail'] )
+		);
 	}
 
 	/* ---------------------------------------------------------- List screen */
