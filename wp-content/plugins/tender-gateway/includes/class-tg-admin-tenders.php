@@ -243,6 +243,9 @@ class TG_Admin_Tenders {
 			echo '<tr><td colspan="6">No tenders yet. <a href="' . esc_url( self::edit_url() ) . '">Create the first one</a>.</td></tr>';
 		}
 
+		// One grouped query for the whole page rather than one per row.
+		$bid_counts = TG_Bid::counts_for_tenders( wp_list_pluck( $result['rows'], 'id' ) );
+
 		foreach ( $result['rows'] as $row ) {
 			echo '<tr>';
 			echo '<td><a href="' . esc_url( self::edit_url( $row['id'] ) ) . '"><strong>' . esc_html( $row['external_id'] ) . '</strong></a></td>';
@@ -250,7 +253,12 @@ class TG_Admin_Tenders {
 			echo '<td>' . esc_html( $row['buyer'] ) . '</td>';
 			echo '<td>' . self::status_badge( $row['status'] ) . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput
 			echo '<td>' . esc_html( self::datetime( $row['closing_at'] ) ) . '</td>';
-			echo '<td>&mdash;</td>';
+
+			$count = isset( $bid_counts[ (int) $row['id'] ] ) ? (int) $bid_counts[ (int) $row['id'] ] : 0;
+
+			echo '<td>' . ( $count
+				? '<a href="' . esc_url( self::edit_url( $row['id'] ) ) . '#bids"><strong>' . esc_html( number_format_i18n( $count ) ) . '</strong></a>'
+				: '<span style="color:#8c8f94;">0</span>' ) . '</td>';
 			echo '</tr>';
 		}
 
@@ -269,7 +277,7 @@ class TG_Admin_Tenders {
 			echo '</div></div>';
 		}
 
-		echo '<p class="description" style="margin-top:14px;">The Bids column fills in with M2, when supplier bidding is built.</p>';
+		echo '<p class="description" style="margin-top:14px;">Bids are sealed - no supplier can see another supplier\'s bid. The buyer and admin see them all once a tender closes.</p>';
 		echo '</div>';
 	}
 

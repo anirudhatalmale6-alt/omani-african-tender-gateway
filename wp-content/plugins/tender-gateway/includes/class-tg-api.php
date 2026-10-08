@@ -25,18 +25,22 @@ class TG_API {
 		$settings = tg_settings();
 
 		if ( 'remote' !== $settings['source'] ) {
-			return self::index( TG_Sample_Data::tenders() );
+			$feed = self::index( TG_Sample_Data::tenders() );
+		} else {
+			$feed = TG_Store::all( 'live' );
+
+			// A live source that has not completed its first sync yet would leave
+			// the site empty; show the demonstration feed until real records land.
+			if ( ! $feed ) {
+				$feed = self::index( TG_Sample_Data::tenders() );
+			}
 		}
 
-		$live = TG_Store::all( 'live' );
-
-		// A live source that has not completed its first sync yet would leave the
-		// site empty; show the demonstration feed until real records land.
-		if ( ! $live ) {
-			return self::index( TG_Sample_Data::tenders() );
-		}
-
-		return $live;
+		// Tenders the platform owns sit alongside the feed rather than in a
+		// separate system, so they inherit the listing, filters, cards, detail
+		// page and pretty URLs that already exist. Own tenders come first -
+		// they are the live business, the feed is reference material.
+		return TG_Tender::public_records() + $feed;
 	}
 
 	/**

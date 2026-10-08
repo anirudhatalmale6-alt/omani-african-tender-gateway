@@ -197,4 +197,12 @@ $saved = TG_Saved::has( $tender['id'] );
 			</div>
 		</aside>
 	</div>
+
+	<?php
+	/**
+	 * Bidding panel. Only fires for tenders the platform owns - records from
+	 * the Ministry feed are read-only and have nothing to bid on.
+	 */
+	do_action( 'tg_after_tender_detail', $tender );
+	?>
 </div>

@@ -348,6 +348,72 @@ class TG_Tender {
 		) );
 	}
 
+	/**
+	 * Own tenders in the shape the front end already understands, so they flow
+	 * through the existing listing, filters, cards and detail page instead of
+	 * needing a parallel set of templates.
+	 *
+	 * Only statuses suppliers are allowed to see are included - a draft or a
+	 * rejected tender never reaches the public side at all.
+	 *
+	 * `documents` is deliberately left empty here. Attachments on an owned
+	 * tender are paid detail and are rendered through the gated panel, not
+	 * through the older template path which shows them to anyone signed in.
+	 *
+	 * @return array Keyed by reference, matching TG_API's shape.
+	 */
+	public static function public_records() {
+		global $wpdb;
+
+		$visible = TG_Status::supplier_visible();
+
+		if ( empty( $visible ) ) {
+			return array();
+		}
+
+		$in   = implode( ', ', array_fill( 0, count( $visible ), '%s' ) );
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT * FROM " . TG_Store::table() . " WHERE source = %s AND status IN ({$in}) ORDER BY closing_at ASC",
+			array_merge( array( self::SOURCE ), $visible )
+		), ARRAY_A );
+
+		$out = array();
+
+		foreach ( (array) $rows as $row ) {
+			$out[ $row['external_id'] ] = array(
+				'id'          => $row['external_id'],
+				'reference'   => $row['external_id'],
+				'title'       => $row['title'],
+				'buyer'       => $row['buyer'],
+				'country'     => $row['country'] ? $row['country'] : 'Oman',
+				'sector'      => $row['sector'],
+				'summary'     => (string) $row['summary'],
+				'description' => (string) $row['specifications'] ? (string) $row['specifications'] : (string) $row['description'],
+				'value'       => (float) $row['value'],
+				'currency'    => $row['currency'],
+				'published'   => $row['published'] ? $row['published'] : '',
+				'deadline'    => $row['deadline'] ? $row['deadline'] : '',
+				'method'      => 'Open tender',
+				'source_name' => 'Jumla Tender',
+				'contact'     => array(),
+				'documents'   => array(),
+				'eligibility' => array(),
+				// Own-tender extras the bidding panel needs. The feed records
+				// carry no status, which is how the panel tells them apart.
+				'status'      => $row['status'],
+				'db_id'       => (int) $row['id'],
+				'quantity'    => $row['quantity'],
+				'unit'        => $row['unit'],
+				'delivery_location' => $row['delivery_location'],
+				'closing_at'  => $row['closing_at'],
+				'opening_at'  => $row['opening_at'],
+				'owner_id'    => $row['owner_id'],
+			);
+		}
+
+		return $out;
+	}
+
 	public static function events( $tender_id ) {
 		global $wpdb;
 
