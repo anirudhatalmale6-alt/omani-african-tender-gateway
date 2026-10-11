@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_Store {
 
-	const DB_VERSION = '1.4.0';
+	const DB_VERSION = '1.5.0';
 
 	public static function table() {
 		global $wpdb;
@@ -57,6 +57,16 @@ class TG_Store {
 		global $wpdb;
 
 		return $wpdb->prefix . 'tg_subscriptions';
+	}
+
+	/**
+	 * A supplier asking for a plan. Not a subscription and not a payment: it is
+	 * the supplier raising their hand so somebody can invoice them.
+	 */
+	public static function sub_requests_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_sub_requests';
 	}
 
 	/**
@@ -251,6 +261,8 @@ class TG_Store {
 			created_by BIGINT UNSIGNED NULL,
 			created_at DATETIME NULL,
 			cancelled_at DATETIME NULL,
+			reminders_sent VARCHAR(60) NOT NULL DEFAULT '',
+			reminder_tried_at DATETIME NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY invoice_no (invoice_no),
 			KEY supplier_id (supplier_id),
@@ -259,6 +271,32 @@ class TG_Store {
 		) {$collate};";
 
 		dbDelta( $sql_subs );
+
+		$requests = self::sub_requests_table();
+
+		// A request carries a copy of the price it was made at. The plan can be
+		// repriced tomorrow; what the supplier was shown when they asked is a
+		// separate fact and has to survive.
+		$sql_requests = "CREATE TABLE {$requests} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			supplier_id BIGINT UNSIGNED NOT NULL,
+			plan_id BIGINT UNSIGNED NULL,
+			plan_name VARCHAR(190) NOT NULL DEFAULT '',
+			price DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			currency VARCHAR(12) NOT NULL DEFAULT 'OMR',
+			period VARCHAR(12) NOT NULL DEFAULT 'monthly',
+			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			note TEXT NULL,
+			created_at DATETIME NULL,
+			handled_by BIGINT UNSIGNED NULL,
+			handled_at DATETIME NULL,
+			subscription_id BIGINT UNSIGNED NULL,
+			PRIMARY KEY  (id),
+			KEY supplier_id (supplier_id),
+			KEY status (status)
+		) {$collate};";
+
+		dbDelta( $sql_requests );
 
 		update_option( 'tg_db_version', self::DB_VERSION );
 	}

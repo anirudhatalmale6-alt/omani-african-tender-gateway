@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Tender Gateway
  * Description:  Tender feed, supplier registration and members-only tender access for the Omani-African Tender Gateway.
- * Version:      1.8.0
+ * Version:      1.9.0
  * Author:       Anirudha Talmale
  * Text Domain:  tender-gateway
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TG_VERSION', '1.8.0' );
+define( 'TG_VERSION', '1.9.0' );
 define( 'TG_FILE', __FILE__ );
 define( 'TG_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TG_URL', plugin_dir_url( __FILE__ ) );
@@ -29,6 +29,7 @@ require_once TG_PATH . 'includes/class-tg-admin-tenders.php';
 require_once TG_PATH . 'includes/class-tg-admin-suppliers.php';
 require_once TG_PATH . 'includes/class-tg-sectors.php';
 require_once TG_PATH . 'includes/class-tg-subscription.php';
+require_once TG_PATH . 'includes/class-tg-subscription-ui.php';
 require_once TG_PATH . 'includes/class-tg-admin-subscriptions.php';
 require_once TG_PATH . 'includes/class-tg-sync.php';
 require_once TG_PATH . 'includes/class-tg-api.php';
@@ -184,6 +185,7 @@ add_action( 'plugins_loaded', function () {
 	TG_Admin_Suppliers::init();
 	TG_Sectors::init();
 	TG_Subscription::init();
+	TG_Subscription_UI::init();
 	TG_Admin_Subscriptions::init();
 
 	// Schema changes ship with plugin updates, so apply them on load rather

@@ -27,11 +27,31 @@ class TG_Subscription {
 	const EXPIRED   = 'expired';
 	const CANCELLED = 'cancelled';
 
+	const PENDING   = 'pending';
+	const FULFILLED = 'fulfilled';
+	const DECLINED  = 'declined';
+
 	public static function init() {
 		// This is what finally answers TG_Access::is_subscribed(). Until this
 		// filter existed, nobody was subscribed and bidding was shut.
 		add_filter( 'tg_is_subscribed', array( __CLASS__, 'filter_is_subscribed' ), 10, 2 );
 		add_action( 'tg_run_schedule', array( __CLASS__, 'expire_due' ) );
+		add_action( 'tg_run_schedule', array( __CLASS__, 'run_reminders' ) );
+	}
+
+	/**
+	 * Now, as a timestamp, read the same way every stored datetime is written.
+	 *
+	 * Every datetime in these tables is written with current_time( 'mysql' ),
+	 * which is site-local. WordPress pins PHP's own timezone to UTC, so
+	 * strtotime() on one of those strings yields a timestamp that is *not* the
+	 * real instant unless the site is itself on UTC - and comparing that
+	 * against time() would hand a supplier the timezone offset as free access.
+	 * Parsing "now" through the same route keeps both sides of every comparison
+	 * in the same frame, which is what actually matters.
+	 */
+	private static function now() {
+		return strtotime( current_time( 'mysql' ) );
 	}
 
 	/* ------------------------------------------------------------- Plans */
@@ -205,7 +225,7 @@ class TG_Subscription {
 		// A renewal bought before the current period ends extends it rather
 		// than throwing away the days already paid for.
 		$current = self::current( $supplier_id );
-		$start   = ( $current && strtotime( $current['ends_at'] ) > time() )
+		$start   = ( $current && strtotime( $current['ends_at'] ) > self::now() )
 			? $current['ends_at']
 			: current_time( 'mysql' );
 
@@ -240,6 +260,14 @@ class TG_Subscription {
 		}
 
 		$id = (int) $wpdb->insert_id;
+
+		// If this supplier had asked for a plan, that request is now answered.
+		// Leaving it pending would keep it on the admin's to-do list for ever.
+		$request = self::pending_request( (int) $supplier_id );
+
+		if ( $request ) {
+			self::close_request( (int) $request['id'], self::FULFILLED, $id );
+		}
 
 		do_action( 'tg_subscription_started', $id, (int) $supplier_id, $plan );
 
@@ -330,14 +358,43 @@ class TG_Subscription {
 
 		if ( self::CANCELLED === $sub['status'] ) {
 			// Cancelled still runs to the end of the paid period.
-			return strtotime( $sub['ends_at'] ) > time();
+			return strtotime( $sub['ends_at'] ) > self::now();
 		}
 
 		if ( self::ACTIVE !== $sub['status'] ) {
 			return false;
 		}
 
-		return strtotime( $sub['ends_at'] ) > time();
+		return strtotime( $sub['ends_at'] ) > self::now();
+	}
+
+	/**
+	 * Days left on a period. Negative once it has lapsed, null when there is
+	 * nothing to measure.
+	 *
+	 * Part of a day counts as a day while there is still time on the clock.
+	 * A period bought on the 11th and running to the 16th has five days left
+	 * on the 11th, not four - rounding down tells a supplier their access ends
+	 * a day before it does, and that number sits next to the actual end date
+	 * on their dashboard where the contradiction is obvious.
+	 *
+	 * Once the end time has passed the sign has to stay negative, so the lapse
+	 * side rounds the other way.
+	 */
+	public static function days_left( $sub ) {
+		if ( ! is_array( $sub ) || empty( $sub['ends_at'] ) ) {
+			return null;
+		}
+
+		$ends = strtotime( $sub['ends_at'] );
+
+		if ( ! $ends ) {
+			return null;
+		}
+
+		$diff = $ends - self::now();
+
+		return (int) ( $diff >= 0 ? ceil( $diff / DAY_IN_SECONDS ) : floor( $diff / DAY_IN_SECONDS ) );
 	}
 
 	public static function filter_is_subscribed( $subscribed, $user_id ) {
@@ -399,5 +456,390 @@ class TG_Subscription {
 			: $wpdb->get_var( $sql );
 
 		return (float) $total;
+	}
+
+	/* ----------------------------------------------------------- Requests */
+
+	/**
+	 * A supplier asking to be put on a plan.
+	 *
+	 * There is no gateway, so this is the honest shape of "subscribe": the
+	 * supplier says which plan they want, somebody invoices them, and the
+	 * payment is recorded. The request is not access and never grants any.
+	 *
+	 * @return int|WP_Error Request id.
+	 */
+	public static function request( $supplier_id, $plan_id, $note = '' ) {
+		global $wpdb;
+
+		if ( ! TG_Access::is_supplier( $supplier_id ) ) {
+			return new WP_Error( 'tg_req_no_supplier', 'Only a registered supplier can request a plan.' );
+		}
+
+		$plan = self::plan( $plan_id );
+
+		if ( ! $plan || ! (int) $plan['is_active'] ) {
+			return new WP_Error( 'tg_req_no_plan', 'That plan is not available.' );
+		}
+
+		// One open request at a time. Without this, a supplier clicking twice
+		// puts the same job on the admin's list twice.
+		if ( self::pending_request( $supplier_id ) ) {
+			return new WP_Error( 'tg_req_duplicate', 'You already have a request waiting. Our team will be in touch to arrange payment.' );
+		}
+
+		$row = array(
+			'supplier_id' => (int) $supplier_id,
+			'plan_id'     => (int) $plan_id,
+			'plan_name'   => $plan['name'],
+			'price'       => number_format( (float) $plan['price'], 3, '.', '' ),
+			'currency'    => $plan['currency'],
+			'period'      => $plan['period'],
+			'status'      => self::PENDING,
+			'note'        => sanitize_textarea_field( $note ),
+			'created_at'  => current_time( 'mysql' ),
+		);
+
+		if ( ! $wpdb->insert( TG_Store::sub_requests_table(), $row ) ) {
+			return new WP_Error( 'tg_req_insert', 'Could not record your request. Please try again.' );
+		}
+
+		$id = (int) $wpdb->insert_id;
+
+		do_action( 'tg_subscription_requested', $id, (int) $supplier_id, $plan );
+
+		return $id;
+	}
+
+	public static function pending_request( $supplier_id ) {
+		global $wpdb;
+
+		$row = $wpdb->get_row( $wpdb->prepare(
+			"SELECT * FROM " . TG_Store::sub_requests_table() . "
+			 WHERE supplier_id = %d AND status = %s ORDER BY id DESC LIMIT 1",
+			(int) $supplier_id,
+			self::PENDING
+		), ARRAY_A );
+
+		return $row ? $row : null;
+	}
+
+	public static function requests( $status = '' ) {
+		global $wpdb;
+
+		$table = TG_Store::sub_requests_table();
+
+		if ( $status ) {
+			return (array) $wpdb->get_results( $wpdb->prepare(
+				"SELECT * FROM {$table} WHERE status = %s ORDER BY id DESC LIMIT 200",
+				$status
+			), ARRAY_A );
+		}
+
+		return (array) $wpdb->get_results( "SELECT * FROM {$table} ORDER BY id DESC LIMIT 200", ARRAY_A );
+	}
+
+	public static function request_count( $status = 'pending' ) {
+		global $wpdb;
+
+		return (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM " . TG_Store::sub_requests_table() . " WHERE status = %s",
+			$status
+		) );
+	}
+
+	/**
+	 * Close a request. Rows are never deleted - "who asked for what, and what
+	 * we did about it" is the only record of a sales conversation this platform
+	 * keeps.
+	 */
+	public static function close_request( $id, $status, $subscription_id = 0, $note = '' ) {
+		global $wpdb;
+
+		if ( ! in_array( $status, array( self::FULFILLED, self::DECLINED ), true ) ) {
+			return new WP_Error( 'tg_req_status', 'Unknown request status.' );
+		}
+
+		$row = $wpdb->get_row( $wpdb->prepare(
+			"SELECT * FROM " . TG_Store::sub_requests_table() . " WHERE id = %d",
+			(int) $id
+		), ARRAY_A );
+
+		if ( ! $row ) {
+			return new WP_Error( 'tg_req_missing', 'That request no longer exists.' );
+		}
+
+		if ( self::PENDING !== $row['status'] ) {
+			return new WP_Error( 'tg_req_closed', 'That request has already been dealt with.' );
+		}
+
+		$update = array(
+			'status'     => $status,
+			'handled_by' => get_current_user_id(),
+			'handled_at' => current_time( 'mysql' ),
+		);
+
+		if ( $subscription_id ) {
+			$update['subscription_id'] = (int) $subscription_id;
+		}
+
+		if ( '' !== trim( (string) $note ) ) {
+			$update['note'] = trim( $row['note'] . "\n" . sanitize_textarea_field( $note ) );
+		}
+
+		$wpdb->update( TG_Store::sub_requests_table(), $update, array( 'id' => (int) $id ) );
+
+		return true;
+	}
+
+	/* ---------------------------------------------------------- Reminders */
+
+	/**
+	 * When a supplier is warned, and what each warning is called.
+	 *
+	 * Keyed by the label stored in reminders_sent, so renaming a key would
+	 * re-send history. Add to this list, do not renumber it.
+	 */
+	public static function reminder_milestones() {
+		return array(
+			'd14'    => 14,
+			'd7'     => 7,
+			'd1'     => 1,
+			'lapsed' => 0,
+		);
+	}
+
+	/**
+	 * Which warning, if any, this period is due.
+	 *
+	 * Exactly one milestone applies at any moment: the tightest band the
+	 * remaining days fall into. Six days left is the seven-day band, not the
+	 * fourteen-day one - so a subscription sold with less than a fortnight to
+	 * run never receives a "fourteen days left" notice after its seven-day
+	 * one, which is what walking the list looking for anything unsent does.
+	 *
+	 * It also means a site whose cron has been asleep says the one thing that
+	 * is still true rather than replaying a fortnight of stale warnings.
+	 *
+	 * @return string Milestone key, or '' when nothing is due.
+	 */
+	public static function reminder_due( $sub ) {
+		if ( ! is_array( $sub ) || empty( $sub['ends_at'] ) ) {
+			return '';
+		}
+
+		// An expired period that was never renewed still earns its lapse
+		// notice; a cancelled one does not, because they asked us to stop.
+		if ( self::CANCELLED === $sub['status'] ) {
+			return '';
+		}
+
+		$days = self::days_left( $sub );
+
+		if ( null === $days ) {
+			return '';
+		}
+
+		$milestone = self::reminder_band( $days );
+
+		if ( ! $milestone ) {
+			return '';
+		}
+
+		return in_array( $milestone, self::reminders_sent( $sub ), true ) ? '' : $milestone;
+	}
+
+	/**
+	 * The single milestone that applies to this many days remaining.
+	 *
+	 * @return string Milestone key, or '' when it is too early to warn.
+	 */
+	public static function reminder_band( $days ) {
+		if ( $days < 0 ) {
+			return 'lapsed';
+		}
+
+		// Tightest band first.
+		foreach ( array( 'd1' => 1, 'd7' => 7, 'd14' => 14 ) as $key => $threshold ) {
+			if ( $days <= $threshold ) {
+				return $key;
+			}
+		}
+
+		return '';
+	}
+
+	public static function reminders_sent( $sub ) {
+		$raw = isset( $sub['reminders_sent'] ) ? (string) $sub['reminders_sent'] : '';
+
+		return array_filter( array_map( 'trim', explode( ',', $raw ) ) );
+	}
+
+	/**
+	 * Send the renewal warnings that are due.
+	 *
+	 * A milestone is recorded as sent only when the mail actually went out. The
+	 * host this runs on has outgoing mail disabled, so pretending otherwise
+	 * would quietly swallow every reminder the platform ever owed a supplier.
+	 * A failed attempt is stamped instead and retried tomorrow, and the admin
+	 * screen shows the failure so somebody can pick up the phone.
+	 */
+	public static function run_reminders() {
+		global $wpdb;
+
+		$now = current_time( 'mysql' );
+
+		// Candidates: anything ending within a fortnight, or already lapsed in
+		// the last month. Older than that and a reminder is just noise.
+		$rows = (array) $wpdb->get_results( $wpdb->prepare(
+			"SELECT * FROM " . TG_Store::subs_table() . "
+			 WHERE ends_at IS NOT NULL
+			   AND ends_at <= DATE_ADD(%s, INTERVAL 14 DAY)
+			   AND ends_at >= DATE_SUB(%s, INTERVAL 30 DAY)
+			   AND status <> %s
+			 ORDER BY ends_at ASC LIMIT 200",
+			$now,
+			$now,
+			self::CANCELLED
+		), ARRAY_A );
+
+		$sent = 0;
+
+		foreach ( $rows as $sub ) {
+			$milestone = self::reminder_due( $sub );
+
+			if ( ! $milestone ) {
+				continue;
+			}
+
+			// A renewal already bought means the supplier is not lapsing at
+			// all - this row is simply an older period in their history.
+			$current = self::current( (int) $sub['supplier_id'] );
+
+			if ( $current && (int) $current['id'] !== (int) $sub['id'] ) {
+				continue;
+			}
+
+			// Retry a failed send once a day, not every five minutes.
+			if ( ! empty( $sub['reminder_tried_at'] )
+				&& strtotime( $sub['reminder_tried_at'] ) > self::now() - DAY_IN_SECONDS ) {
+				continue;
+			}
+
+			$ok = self::send_reminder( $sub, $milestone );
+
+			$update = array( 'reminder_tried_at' => $now );
+
+			if ( $ok ) {
+				$keys                     = self::reminders_sent( $sub );
+				$keys[]                   = $milestone;
+				$update['reminders_sent'] = implode( ',', array_unique( $keys ) );
+				$sent++;
+			}
+
+			$wpdb->update( TG_Store::subs_table(), $update, array( 'id' => (int) $sub['id'] ) );
+
+			self::log_reminder( $sub, $milestone, $ok );
+		}
+
+		return $sent;
+	}
+
+	/**
+	 * @return bool Whether the mail was handed off successfully.
+	 */
+	private static function send_reminder( $sub, $milestone ) {
+		$supplier = get_userdata( (int) $sub['supplier_id'] );
+
+		if ( ! $supplier || ! is_email( $supplier->user_email ) ) {
+			return false;
+		}
+
+		$days    = self::days_left( $sub );
+		$company = get_user_meta( $supplier->ID, 'tg_company', true );
+		$company = $company ? $company : $supplier->display_name;
+		$ends    = date_i18n( 'j F Y', strtotime( $sub['ends_at'] ) );
+		$site    = get_bloginfo( 'name' );
+
+		if ( 'lapsed' === $milestone ) {
+			$subject = sprintf( '[%s] Your subscription has expired', $site );
+			$opening = sprintf(
+				'Your %s subscription expired on %s. You can still sign in and see your bid history, but tender specifications, documents and new bids are closed until it is renewed.',
+				$sub['plan_name'],
+				$ends
+			);
+		} else {
+			$subject = sprintf( '[%s] Your subscription ends in %d day(s)', $site, max( 0, (int) $days ) );
+			$opening = sprintf(
+				'Your %s subscription runs until %s - %d day(s) from now. Renew before then and the new period is added on top of the days you have left, so nothing is lost.',
+				$sub['plan_name'],
+				$ends,
+				max( 0, (int) $days )
+			);
+		}
+
+		$body = sprintf(
+			"Dear %s,\n\n%s\n\nTo renew, reply to this message or contact us and we will raise the invoice.\n\nYour subscription: %s\nInvoice: %s\nPeriod: %s to %s\n\n%s\n%s\n",
+			$company,
+			$opening,
+			$sub['plan_name'],
+			$sub['invoice_no'],
+			date_i18n( 'j F Y', strtotime( $sub['starts_at'] ) ),
+			$ends,
+			$site,
+			tg_page_url( 'dashboard' )
+		);
+
+		return (bool) wp_mail( $supplier->user_email, $subject, $body );
+	}
+
+	/**
+	 * Keep the last 60 attempts so the admin screen can show what actually
+	 * happened rather than what was intended.
+	 */
+	private static function log_reminder( $sub, $milestone, $ok ) {
+		$log = get_option( 'tg_reminder_log', array() );
+
+		if ( ! is_array( $log ) ) {
+			$log = array();
+		}
+
+		array_unshift( $log, array(
+			'at'        => current_time( 'mysql' ),
+			'sub'       => (int) $sub['id'],
+			'supplier'  => (int) $sub['supplier_id'],
+			'milestone' => $milestone,
+			'ok'        => $ok ? 1 : 0,
+		) );
+
+		update_option( 'tg_reminder_log', array_slice( $log, 0, 60 ), false );
+	}
+
+	public static function reminder_log() {
+		$log = get_option( 'tg_reminder_log', array() );
+
+		return is_array( $log ) ? $log : array();
+	}
+
+	/**
+	 * Periods ending soon or lapsed recently, newest expiry first. This is the
+	 * list a human works through when email is not available.
+	 */
+	public static function renewals_due( $within_days = 14, $lapsed_days = 30 ) {
+		global $wpdb;
+
+		$now = current_time( 'mysql' );
+
+		return (array) $wpdb->get_results( $wpdb->prepare(
+			"SELECT * FROM " . TG_Store::subs_table() . "
+			 WHERE ends_at IS NOT NULL
+			   AND ends_at <= DATE_ADD(%s, INTERVAL %d DAY)
+			   AND ends_at >= DATE_SUB(%s, INTERVAL %d DAY)
+			 ORDER BY ends_at ASC LIMIT 100",
+			$now,
+			(int) $within_days,
+			$now,
+			(int) $lapsed_days
+		), ARRAY_A );
 	}
 }

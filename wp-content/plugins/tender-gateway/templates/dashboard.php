@@ -37,7 +37,8 @@ foreach ( TG_API::all() as $tender ) {
 
 	<?php if ( $welcome ) : ?>
 		<div class="tg-notice tg-notice--success">
-			<strong>Welcome to the gateway.</strong> Your supplier account is active and every tender is now unlocked.
+			<strong>Welcome to the gateway.</strong> Your account is registered. Tender headlines and closing dates are
+			open to you now; full specifications, documents and bidding open up on a subscription - see below.
 		</div>
 	<?php endif; ?>
 
@@ -68,6 +69,8 @@ foreach ( TG_API::all() as $tender ) {
 			<span>Closing within 14 days</span>
 		</div>
 	</div>
+
+	<?php do_action( 'tg_dashboard_primary', $user ); ?>
 
 	<section class="tg-dash__section">
 		<div class="tg-dash__sectionhead">

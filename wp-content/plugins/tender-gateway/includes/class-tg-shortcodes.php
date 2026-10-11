@@ -51,8 +51,12 @@ class TG_Shortcodes {
 				return self::render( 'tender-missing' );
 			}
 
-			// The gate: everything beyond the public summary needs an account.
-			if ( ! is_user_logged_in() ) {
+			// The gate. This was once "are you signed in", which was right when
+			// registration was the only level. It is not right now: the full
+			// specification is the thing suppliers pay for, so it has to be
+			// TG_Access that decides, exactly as it does for the documents and
+			// for bidding.
+			if ( ! TG_Access::can_see_full_detail() ) {
 				return self::render( 'tender-locked', array( 'tender' => $tender ) );
 			}
 

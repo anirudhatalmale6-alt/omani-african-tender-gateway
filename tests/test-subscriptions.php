@@ -158,7 +158,227 @@ ok( 'deleting a used plan is refused', is_wp_error( $r ) && 'tg_plan_in_use' ===
 ok( 'and it has been deactivated instead', 0 === (int) TG_Subscription::plan( $monthly )['is_active'] );
 ok( 'the historic subscription still names it', 'TEST Monthly' === TG_Subscription::get( $s1 )['plan_name'] );
 
+echo "\n== Expiry is judged in the site's own timezone ==\n";
+
+// Every datetime in these tables is site-local. If "now" is read as a real UTC
+// timestamp instead, a site four hours ahead of UTC hands every supplier four
+// extra hours of paid access - and the SQL that marks rows expired disagrees
+// with the PHP that grants access. This is the regression that catches it.
+$restore_tz_s = get_option( 'timezone_string', false );
+$restore_tz_o = get_option( 'gmt_offset', false );
+update_option( 'timezone_string', 'Asia/Muscat' );
+update_option( 'gmt_offset', 4 );
+
+$offset_hours = (int) round( ( strtotime( current_time( 'mysql' ) ) - time() ) / HOUR_IN_SECONDS );
+ok( 'the test site clock really does read four hours ahead of UTC, got ' . $offset_hours, 4 === $offset_hours );
+
+$tz  = sup( 'tz' );
+$s8  = TG_Subscription::start( $tz, $annual, array() );
+$local_now = strtotime( current_time( 'mysql' ) );
+
+$wpdb->update(
+	TG_Store::subs_table(),
+	array( 'ends_at' => date( 'Y-m-d H:i:s', $local_now - 2 * HOUR_IN_SECONDS ) ),
+	array( 'id' => $s8 )
+);
+ok( 'a period that ended two local hours ago is not active', ! TG_Subscription::is_active( $tz ) );
+
+TG_Subscription::expire_due();
+ok( 'and the sweeper agrees it has expired', TG_Subscription::EXPIRED === TG_Subscription::get( $s8 )['status'] );
+
+$wpdb->update(
+	TG_Store::subs_table(),
+	array( 'status' => TG_Subscription::ACTIVE, 'ends_at' => date( 'Y-m-d H:i:s', $local_now + 2 * HOUR_IN_SECONDS ) ),
+	array( 'id' => $s8 )
+);
+ok( 'a period with two local hours left is still active', TG_Subscription::is_active( $tz ) );
+
+TG_Subscription::expire_due();
+ok( 'and the sweeper leaves it alone', TG_Subscription::ACTIVE === TG_Subscription::get( $s8 )['status'] );
+
+if ( false === $restore_tz_s ) {
+	delete_option( 'timezone_string' );
+} else {
+	update_option( 'timezone_string', $restore_tz_s );
+}
+
+if ( false === $restore_tz_o ) {
+	delete_option( 'gmt_offset' );
+} else {
+	update_option( 'gmt_offset', $restore_tz_o );
+}
+
+echo "\n== Days left ==\n";
+
+/**
+ * A subscription row as the reminder engine sees it. Built from current_time()
+ * so it lands in the same frame as everything in the tables.
+ */
+function mk_sub( $days, $sent = '', $status = 'active' ) {
+	$base = strtotime( current_time( 'mysql' ) );
+
+	return array(
+		'id'             => 0,
+		'supplier_id'    => 0,
+		'plan_name'      => 'TEST',
+		'invoice_no'     => 'TEST-0',
+		'status'         => $status,
+		'starts_at'      => current_time( 'mysql' ),
+		'ends_at'        => date( 'Y-m-d H:i:s', $base + (int) ( $days * DAY_IN_SECONDS ) ),
+		'reminders_sent' => $sent,
+	);
+}
+
+ok( '14 days out reads as 14', 14 === TG_Subscription::days_left( mk_sub( 14 ) ) );
+ok( 'tomorrow reads as 1', 1 === TG_Subscription::days_left( mk_sub( 1 ) ) );
+ok( 'yesterday reads as negative', TG_Subscription::days_left( mk_sub( -1 ) ) < 0 );
+ok( 'two hours before the end still reads as a day left, not none', 1 === TG_Subscription::days_left( mk_sub( 2 / 24 ) ) );
+ok( 'two hours after the end reads as lapsed', TG_Subscription::days_left( mk_sub( -2 / 24 ) ) < 0 );
+ok( 'a row with no end date reads as unknown, not zero', null === TG_Subscription::days_left( array( 'ends_at' => '' ) ) );
+
+echo "\n== Which renewal warning is due ==\n";
+ok( '20 days out: nothing yet', '' === TG_Subscription::reminder_due( mk_sub( 20 ) ) );
+ok( '14 days out: the 14-day notice', 'd14' === TG_Subscription::reminder_due( mk_sub( 14 ) ) );
+ok( '10 days out, 14 already sent: nothing', '' === TG_Subscription::reminder_due( mk_sub( 10, 'd14' ) ) );
+ok( '7 days out, 14 already sent: the 7-day notice', 'd7' === TG_Subscription::reminder_due( mk_sub( 7, 'd14' ) ) );
+ok( '1 day out, 14 and 7 sent: the 1-day notice', 'd1' === TG_Subscription::reminder_due( mk_sub( 1, 'd14,d7' ) ) );
+ok( 'lapsed, all three sent: the lapse notice', 'lapsed' === TG_Subscription::reminder_due( mk_sub( -1, 'd14,d7,d1' ) ) );
+ok( 'lapsed and already told: nothing', '' === TG_Subscription::reminder_due( mk_sub( -1, 'd14,d7,d1,lapsed' ) ) );
+
+// A site whose cron has been asleep must not work through a fortnight of
+// stale warnings - it should say the one thing that is still true.
+ok( 'cron asleep for a fortnight: sends the lapse notice, not the 14-day one', 'lapsed' === TG_Subscription::reminder_due( mk_sub( -3 ) ) );
+ok( 'cron asleep for a week: sends the 1-day notice, not the 14-day one', 'd1' === TG_Subscription::reminder_due( mk_sub( 1 ) ) );
+
+// Cancelling is the supplier asking us to stop. Nagging them afterwards is
+// the one thing they explicitly did not want.
+ok( 'a cancelled period is never chased', '' === TG_Subscription::reminder_due( mk_sub( -1, '', TG_Subscription::CANCELLED ) ) );
+ok( 'nor while it runs out its paid days', '' === TG_Subscription::reminder_due( mk_sub( 3, '', TG_Subscription::CANCELLED ) ) );
+
+ok( 'milestones that have been sent are read back', array( 'd14', 'd7' ) === array_values( TG_Subscription::reminders_sent( mk_sub( 7, 'd14,d7' ) ) ) );
+
+// Sold with six days to run, so the 14-day notice never applied and must not
+// arrive after the 7-day one has already gone out.
+ok( 'a short period never gets a 14-day notice after its 7-day one', '' === TG_Subscription::reminder_due( mk_sub( 6, 'd7' ) ) );
+ok( 'nor a 7-day notice after its 1-day one', '' === TG_Subscription::reminder_due( mk_sub( 0.5, 'd1' ) ) );
+ok( 'one band applies at a time: 6 days is the 7-day band', 'd7' === TG_Subscription::reminder_band( 6 ) );
+ok( 'and 8 days is the 14-day band', 'd14' === TG_Subscription::reminder_band( 8 ) );
+
+echo "\n== A reminder is only recorded as sent if it was actually sent ==\n";
+
+// The live host has outgoing mail disabled. Marking the milestone sent anyway
+// would swallow every reminder the platform owed a supplier, silently.
+$rem        = sup( 'rem' );
+$s9         = TG_Subscription::start( $rem, $monthly, array() );
+ok( 'the delivery log is capped so it cannot grow without bound', count( TG_Subscription::reminder_log() ) <= 60 );
+
+$wpdb->update(
+	TG_Store::subs_table(),
+	array( 'ends_at' => date( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) + 6 * DAY_IN_SECONDS ) ),
+	array( 'id' => $s9 )
+);
+
+$mail_fails = function () { return false; };
+add_filter( 'pre_wp_mail', $mail_fails, 99 );
+TG_Subscription::run_reminders();
+remove_filter( 'pre_wp_mail', $mail_fails, 99 );
+
+$row = TG_Subscription::get( $s9 );
+ok( 'a send that failed is not recorded as sent', '' === trim( (string) $row['reminders_sent'] ) );
+ok( 'but the attempt is stamped', ! empty( $row['reminder_tried_at'] ) );
+ok( 'the warning is still shown as due', 'd7' === TG_Subscription::reminder_due( $row ) );
+
+function log_for( $sub_id ) {
+	$mine = array();
+
+	foreach ( TG_Subscription::reminder_log() as $entry ) {
+		if ( (int) $entry['sub'] === (int) $sub_id ) {
+			$mine[] = $entry;
+		}
+	}
+
+	return $mine;
+}
+
+$mine = log_for( $s9 );
+ok( 'and the failure is logged as a failure', 1 === count( $mine ) && 0 === (int) $mine[0]['ok'] );
+
+// Five-minute cron must not retry a dead mail server twelve times an hour.
+add_filter( 'pre_wp_mail', $mail_fails, 99 );
+TG_Subscription::run_reminders();
+remove_filter( 'pre_wp_mail', $mail_fails, 99 );
+ok( 'an immediate re-run does not try again', 1 === count( log_for( $s9 ) ) );
+
+// A day later, with mail working.
+$wpdb->update(
+	TG_Store::subs_table(),
+	array( 'reminder_tried_at' => date( 'Y-m-d H:i:s', strtotime( current_time( 'mysql' ) ) - 2 * DAY_IN_SECONDS ) ),
+	array( 'id' => $s9 )
+);
+
+$mail_works = function () { return true; };
+add_filter( 'pre_wp_mail', $mail_works, 99 );
+TG_Subscription::run_reminders();
+remove_filter( 'pre_wp_mail', $mail_works, 99 );
+
+$row = TG_Subscription::get( $s9 );
+ok( 'once it sends, the milestone is recorded', in_array( 'd7', TG_Subscription::reminders_sent( $row ), true ) );
+ok( 'and it is no longer due', '' === TG_Subscription::reminder_due( $row ) );
+
+$count_after = count( log_for( $s9 ) );
+
+add_filter( 'pre_wp_mail', $mail_works, 99 );
+TG_Subscription::run_reminders();
+remove_filter( 'pre_wp_mail', $mail_works, 99 );
+ok( 'the same warning is never sent twice', count( log_for( $s9 ) ) === $count_after );
+
+echo "\n== A supplier asking for a plan ==\n";
+$req_sup = sup( 'req' );
+$reqplan = TG_Subscription::save_plan( array(
+	'name' => 'TEST Request', 'price' => 30, 'currency' => 'OMR', 'period' => 'monthly', 'is_active' => 1,
+) );
+$plans[] = $reqplan;
+
+$r1 = TG_Subscription::request( $req_sup, $reqplan );
+ok( 'a request is recorded', is_int( $r1 ) && $r1 > 0 );
+ok( 'and found as pending', TG_Subscription::pending_request( $req_sup ) );
+ok( 'requesting does NOT grant access', ! TG_Subscription::is_active( $req_sup ) );
+
+$r2 = TG_Subscription::request( $req_sup, $annual );
+ok( 'a second request is refused while one waits', is_wp_error( $r2 ) && 'tg_req_duplicate' === $r2->get_error_code() );
+
+$r3 = TG_Subscription::request( $req_sup, 999999 );
+ok( 'a request for a plan that does not exist is refused', is_wp_error( $r3 ) );
+
+$r4 = TG_Subscription::request( 1, $reqplan );
+ok( 'only a supplier can request a plan', is_wp_error( $r4 ) && 'tg_req_no_supplier' === $r4->get_error_code() );
+
+$s10 = TG_Subscription::start( $req_sup, $reqplan, array( 'payment_ref' => 'TEST-REF' ) );
+ok( 'recording the payment grants access', TG_Subscription::is_active( $req_sup ) );
+ok( 'and closes the request automatically', ! TG_Subscription::pending_request( $req_sup ) );
+
+global $wpdb;
+$closed = $wpdb->get_row( $wpdb->prepare(
+	"SELECT * FROM " . TG_Store::sub_requests_table() . " WHERE id = %d",
+	$r1
+), ARRAY_A );
+ok( 'the request is marked fulfilled, not deleted', $closed && TG_Subscription::FULFILLED === $closed['status'] );
+ok( 'and points at the subscription that answered it', $closed && (int) $closed['subscription_id'] === (int) $s10 );
+ok( 'with the price it was asked for at the time', $closed && abs( (float) $closed['price'] - 30.0 ) < 0.0005 );
+
+// An inactive plan is not on offer, so it cannot be requested either.
+TG_Subscription::save_plan( array( 'name' => 'TEST Request', 'price' => 30, 'period' => 'monthly', 'is_active' => 0 ), $reqplan );
+$r5 = TG_Subscription::request( sup( 'req2' ), $reqplan );
+ok( 'a withdrawn plan cannot be requested', is_wp_error( $r5 ) && 'tg_req_no_plan' === $r5->get_error_code() );
+
+$again = TG_Subscription::close_request( $r1, TG_Subscription::DECLINED );
+ok( 'a closed request cannot be closed again', is_wp_error( $again ) && 'tg_req_closed' === $again->get_error_code() );
+
 // Clean up.
+foreach ( $users as $id ) {
+	$wpdb->delete( TG_Store::sub_requests_table(), array( 'supplier_id' => $id ) );
+}
+
 foreach ( $users as $id ) {
 	$wpdb->delete( TG_Store::subs_table(), array( 'supplier_id' => $id ) );
 	wp_delete_user( $id );

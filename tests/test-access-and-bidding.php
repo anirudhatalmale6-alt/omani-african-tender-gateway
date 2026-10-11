@@ -197,6 +197,86 @@ $ids  = array_map( function ( $b ) { return (int) $b['tender_id']; }, $mine );
 ok( 'a supplier\'s own history returns only their own bids', 1 === count( array_filter( $mine, function ( $b ) use ( $s1 ) { return (int) $b['supplier_id'] === (int) $s1; } ) ) );
 ok( 'and nothing belonging to the other supplier', 0 === count( array_filter( $mine, function ( $b ) use ( $s2 ) { return (int) $b['supplier_id'] === (int) $s2; } ) ) );
 
+echo "\n== The tender detail page itself is gated on the subscription ==\n";
+
+// The specification is the thing suppliers pay for. The page that renders it
+// must ask TG_Access, not merely "are you signed in" - that was true when
+// registration was the only level and is the kind of gate that quietly stops
+// being a gate when a level is added above it.
+$secret = 'TESTSPECMARKER-' . wp_generate_password( 8, false );
+$paid   = TG_Tender::create( array(
+	'title'          => 'TEST- gate fixture',
+	'buyer'          => 'Test Buyer',
+	'currency'       => 'OMR',
+	'specifications' => "Restricted technical requirement {$secret} is paid detail.",
+	'closing_at'     => gmdate( 'Y-m-d H:i:s', strtotime( '+10 days' ) ),
+), 0 );
+$made_tenders[] = $paid;
+TG_Tender::move( $paid, TG_Status::PENDING, 'test' );
+TG_Tender::move( $paid, TG_Status::APPROVED, 'test' );
+$paid_row = TG_Tender::get( $paid );
+
+$gate_plan = TG_Subscription::save_plan( array(
+	'name' => 'TEST Gate', 'price' => 10, 'currency' => 'OMR', 'period' => 'monthly', 'is_active' => 1,
+) );
+
+$unsub = supplier( 'gate-unsub', true );
+$subbed = supplier( 'gate-subbed', true );
+TG_Subscription::start( $subbed, $gate_plan );
+
+// An earlier section in this file switches the requirement off. State it here
+// rather than inheriting it - a gate test that silently runs with the gate
+// disabled is the most expensive kind of green.
+$keep = get_option( 'tg_require_subscription', false );
+update_option( 'tg_require_subscription', 'yes' );
+ok( 'the subscription requirement is on for this section', TG_Access::subscription_required() );
+
+ok( 'the fixture is open for bidding', TG_Tender::accepts_bids( $paid_row ) );
+ok( 'the paid supplier is subscribed', TG_Subscription::is_active( $subbed ) );
+ok( 'the other one is not', ! TG_Subscription::is_active( $unsub ) );
+
+/**
+ * Render the detail page as a given user and return the HTML source. Source,
+ * not visible text: a value hidden with CSS is still given away.
+ */
+function detail_html( $user_id, $tender_ref ) {
+	wp_set_current_user( $user_id );
+	$_GET['tender'] = $tender_ref;
+	$html = TG_Shortcodes::tenders( array() );
+	unset( $_GET['tender'] );
+	wp_set_current_user( 0 );
+
+	return (string) $html;
+}
+
+$ref = $paid_row['external_id'];
+
+ok( 'a signed-out visitor never receives the specification',
+	false === strpos( detail_html( 0, $ref ), $secret ) );
+ok( 'a registered but unsubscribed supplier never receives it either',
+	false === strpos( detail_html( $unsub, $ref ), $secret ) );
+ok( 'and they are told a subscription is what opens it',
+	false !== stripos( detail_html( $unsub, $ref ), 'subscribed suppliers' ) );
+ok( 'a subscribed supplier does receive it',
+	false !== strpos( detail_html( $subbed, $ref ), $secret ) );
+
+// Switching the requirement off is a deliberate staging setting, and it has to
+// actually do what the settings screen says it does.
+update_option( 'tg_require_subscription', 'no' );
+ok( 'with the requirement switched off, a registered supplier sees it',
+	false !== strpos( detail_html( $unsub, $ref ), $secret ) );
+update_option( 'tg_require_subscription', 'yes' );
+ok( 'and switching it back on closes the page again',
+	false === strpos( detail_html( $unsub, $ref ), $secret ) );
+
+if ( false === $keep ) {
+	delete_option( 'tg_require_subscription' );
+} else {
+	update_option( 'tg_require_subscription', $keep );
+}
+
+$wpdb->delete( TG_Store::plans_table(), array( 'id' => $gate_plan ) );
+
 // Clean up.
 if ( false === $restore_requirement ) {
 	delete_option( 'tg_require_subscription' );
@@ -211,6 +291,7 @@ foreach ( $made_tenders as $id ) {
 }
 
 foreach ( $made_users as $id ) {
+	$wpdb->delete( TG_Store::subs_table(), array( 'supplier_id' => $id ) );
 	$wpdb->delete( TG_Store::bids_table(), array( 'supplier_id' => $id ) );
 	wp_delete_user( $id );
 }

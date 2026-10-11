@@ -12,6 +12,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 $days      = TG_API::days_left( $tender );
 $return_to = tg_tender_url( $tender['id'] );
+
+// Two different people see this page: somebody with no account, and a
+// registered supplier who has not subscribed. Telling the second one to
+// "create a free account" when they already have one is how you lose them.
+$signed_in = is_user_logged_in();
 ?>
 <div class="tg-single tg-single--locked">
 
@@ -94,20 +99,41 @@ $return_to = tg_tender_url( $tender['id'] );
 					<span class="tg-locked__icon" aria-hidden="true">
 						<svg width="26" height="26" viewBox="0 0 24 24" focusable="false"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4.5" y="10" width="15" height="10.5" rx="2" fill="currentColor"/></svg>
 					</span>
-					<h2>This tender is available to registered suppliers</h2>
-					<p>Create a free supplier account to unlock the full tender file:</p>
+
+					<?php if ( $signed_in ) : ?>
+						<h2>This tender file is open to subscribed suppliers</h2>
+						<p>Your account is registered. A subscription unlocks the full file on every tender:</p>
+					<?php else : ?>
+						<h2>This tender is available to registered suppliers</h2>
+						<p>Create a free supplier account, then subscribe to unlock the full tender file:</p>
+					<?php endif; ?>
+
 					<ul class="tg-locked__list">
 						<li>Official tender reference and procurement method</li>
 						<li>Complete scope of works and technical requirements</li>
 						<li>Eligibility, bid security and qualification criteria</li>
 						<li>Named buyer contact, address and submission channel</li>
 						<li>Downloadable tender documents and drawings</li>
+						<li>The right to submit a sealed bid</li>
 					</ul>
+
 					<div class="tg-locked__actions">
-						<a class="tg-btn tg-btn--accent tg-btn--lg" href="<?php echo esc_url( TG_Auth::register_url( $return_to ) ); ?>">Register as a supplier</a>
-						<a class="tg-btn tg-btn--ghost tg-btn--lg" href="<?php echo esc_url( TG_Auth::login_url( $return_to ) ); ?>">I already have an account</a>
+						<?php if ( $signed_in ) : ?>
+							<a class="tg-btn tg-btn--accent tg-btn--lg" href="<?php echo esc_url( tg_page_url( 'dashboard' ) ); ?>">View subscription plans</a>
+							<a class="tg-btn tg-btn--ghost tg-btn--lg" href="<?php echo esc_url( tg_page_url( 'tenders' ) ); ?>">Back to tenders</a>
+						<?php else : ?>
+							<a class="tg-btn tg-btn--accent tg-btn--lg" href="<?php echo esc_url( TG_Auth::register_url( $return_to ) ); ?>">Register as a supplier</a>
+							<a class="tg-btn tg-btn--ghost tg-btn--lg" href="<?php echo esc_url( TG_Auth::login_url( $return_to ) ); ?>">I already have an account</a>
+						<?php endif; ?>
 					</div>
-					<p class="tg-locked__note">Registration is free for Omani suppliers and takes about a minute.</p>
+
+					<p class="tg-locked__note">
+						<?php if ( $signed_in ) : ?>
+							Choose a plan on your dashboard and we will contact you to arrange payment.
+						<?php else : ?>
+							Registration is free and takes about a minute.
+						<?php endif; ?>
+					</p>
 				</div>
 			</section>
 		</div>
@@ -122,8 +148,15 @@ $return_to = tg_tender_url( $tender['id'] );
 				</ul>
 			</div>
 			<div class="tg-panel tg-panel--tight tg-panel--muted">
-				<h3>Why register?</h3>
-				<p>The gateway is operated to help Omani suppliers reach African public buyers. Registered suppliers receive tender alerts matched to their declared sectors.</p>
+				<?php if ( $signed_in ) : ?>
+					<h3>Why subscribe?</h3>
+					<p>A subscription opens the full specification, the attached documents and the right to bid on every
+						tender on the gateway, for as long as it runs.</p>
+				<?php else : ?>
+					<h3>Why register?</h3>
+					<p>Registration is free. It lets you follow tenders in your sectors and is the first step before
+						subscribing to see the full files and bid.</p>
+				<?php endif; ?>
 			</div>
 		</aside>
 	</div>

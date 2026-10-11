@@ -24,6 +24,7 @@ class TG_Admin_Subscriptions {
 		add_action( 'admin_post_tg_sub_start', array( __CLASS__, 'handle_start' ) );
 		add_action( 'admin_post_tg_sub_cancel', array( __CLASS__, 'handle_cancel' ) );
 		add_action( 'admin_post_tg_billing_save', array( __CLASS__, 'handle_billing_save' ) );
+		add_action( 'admin_post_tg_req_decline', array( __CLASS__, 'handle_req_decline' ) );
 	}
 
 	public static function menu() {
@@ -53,7 +54,19 @@ class TG_Admin_Subscriptions {
 
 		echo '<h2 class="nav-tab-wrapper">';
 
-		foreach ( array( 'subs' => 'Subscriptions', 'plans' => 'Plans', 'billing' => 'Billing &amp; VAT' ) as $key => $label ) {
+		$pending = TG_Subscription::request_count( TG_Subscription::PENDING );
+
+		$tabs = array(
+			'subs'      => 'Subscriptions',
+			'renewals'  => 'Requests &amp; renewals' . ( $pending
+				? ' <span style="display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:#d63638;'
+					. 'color:#fff;font-size:11px;line-height:18px;text-align:center;">' . (int) $pending . '</span>'
+				: '' ),
+			'plans'     => 'Plans',
+			'billing'   => 'Billing &amp; VAT',
+		);
+
+		foreach ( $tabs as $key => $label ) {
 			printf(
 				'<a href="%s" class="nav-tab%s">%s</a>',
 				esc_url( self::url( array( 'tab' => $key ) ) ),
@@ -68,6 +81,8 @@ class TG_Admin_Subscriptions {
 			self::plans_tab();
 		} elseif ( 'billing' === $tab ) {
 			self::billing_tab();
+		} elseif ( 'renewals' === $tab ) {
+			self::renewals_tab();
 		} else {
 			self::subs_tab();
 		}
@@ -156,7 +171,12 @@ class TG_Admin_Subscriptions {
 
 		$suppliers = get_users( array( 'role' => TG_Auth::ROLE, 'orderby' => 'display_name' ) );
 
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="tg-startsub">';
+		// Prefilled when arriving from a plan request, so recording the payment
+		// is one click rather than finding the supplier again in a long list.
+		$pick_supplier = isset( $_GET['supplier'] ) ? (int) $_GET['supplier'] : 0;
+		$pick_plan     = isset( $_GET['plan'] ) ? (int) $_GET['plan'] : 0;
+
+		echo '<form id="tg-record" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="tg-startsub">';
 		wp_nonce_field( 'tg_sub_start' );
 		echo '<input type="hidden" name="action" value="tg_sub_start">';
 		echo '<table class="form-table" role="presentation"><tbody>';
@@ -169,8 +189,9 @@ class TG_Admin_Subscriptions {
 			$status  = TG_Admin_Suppliers::status_of( $s->ID );
 
 			printf(
-				'<option value="%d">%s (%s)</option>',
+				'<option value="%d"%s>%s (%s)</option>',
 				$s->ID,
+				selected( $s->ID, $pick_supplier, false ),
 				esc_html( $company ? $company : $s->display_name ),
 				esc_html( TG_Admin_Suppliers::label( $status ) )
 			);
@@ -183,8 +204,9 @@ class TG_Admin_Subscriptions {
 
 		foreach ( $plans as $p ) {
 			printf(
-				'<option value="%d">%s &mdash; %s %s, %s%s</option>',
+				'<option value="%d"%s>%s &mdash; %s %s, %s%s</option>',
 				(int) $p['id'],
+				selected( (int) $p['id'], $pick_plan, false ),
 				esc_html( $p['name'] ),
 				esc_html( number_format( (float) $p['price'], 3 ) ),
 				esc_html( $p['currency'] ),
@@ -203,6 +225,191 @@ class TG_Admin_Subscriptions {
 
 		submit_button( 'Record subscription and issue invoice number' );
 		echo '</form>';
+	}
+
+	/* ------------------------------------------------- Requests & renewals */
+
+	/**
+	 * The screen somebody actually works from: who has asked for a plan, and
+	 * whose subscription is about to run out.
+	 *
+	 * It exists because email cannot be relied on here. The host has outgoing
+	 * mail disabled, so the reminder the platform sends may never arrive - and
+	 * a reminder nobody receives is not a reminder. This list, and the banner
+	 * on the supplier's own dashboard, are the parts that work regardless.
+	 */
+	private static function renewals_tab() {
+		self::requests_box();
+		self::renewals_box();
+		self::reminder_log_box();
+	}
+
+	private static function requests_box() {
+		$requests = TG_Subscription::requests( TG_Subscription::PENDING );
+
+		echo '<h2 style="margin-top:18px;">Plan requests waiting</h2>';
+		echo '<p class="description">A supplier chose a plan on their dashboard. Nothing has been paid and no access '
+			. 'has been given. Raise the invoice, and when the money arrives record the subscription - that closes the '
+			. 'request automatically.</p>';
+
+		echo '<table class="wp-list-table widefat striped" style="max-width:1100px;"><thead><tr>';
+		echo '<th style="width:26%;">Supplier</th><th style="width:18%;">Plan asked for</th><th style="width:14%;">Price then</th>';
+		echo '<th style="width:14%;">Asked</th><th style="width:28%;"></th>';
+		echo '</tr></thead><tbody>';
+
+		if ( empty( $requests ) ) {
+			echo '<tr><td colspan="5">No requests waiting.</td></tr>';
+		}
+
+		foreach ( $requests as $req ) {
+			$supplier = get_userdata( (int) $req['supplier_id'] );
+			$company  = TG_Award::company_of( $req['supplier_id'] );
+
+			echo '<tr>';
+			echo '<td><strong>' . esc_html( $company ) . '</strong>';
+
+			if ( $supplier ) {
+				echo '<br><span class="description">' . esc_html( $supplier->user_email ) . '</span>';
+				$phone = get_user_meta( $supplier->ID, 'tg_phone', true );
+
+				if ( $phone ) {
+					echo '<br><span class="description">' . esc_html( $phone ) . '</span>';
+				}
+			}
+
+			echo '<br><span class="description">' . esc_html( TG_Admin_Suppliers::label( TG_Admin_Suppliers::status_of( $req['supplier_id'] ) ) ) . '</span>';
+			echo '</td>';
+			echo '<td>' . esc_html( $req['plan_name'] ) . '</td>';
+			echo '<td>' . esc_html( number_format( (float) $req['price'], 3 ) . ' ' . $req['currency'] ) . '</td>';
+			echo '<td>' . esc_html( self::date( $req['created_at'] ) ) . '</td>';
+			echo '<td>';
+			echo '<a class="button button-small button-primary" href="' . esc_url( self::url( array(
+				'tab'      => 'subs',
+				'supplier' => (int) $req['supplier_id'],
+				'plan'     => (int) $req['plan_id'],
+			) ) ) . '#tg-record">Record payment</a> ';
+			echo '<a class="button button-small" href="' . esc_url( wp_nonce_url(
+				add_query_arg( array( 'action' => 'tg_req_decline', 'req' => (int) $req['id'] ), admin_url( 'admin-post.php' ) ),
+				'tg_req_decline_' . (int) $req['id']
+			) ) . '" onclick="return confirm(\'Decline this request? The supplier keeps whatever access they already have.\');">Decline</a>';
+			echo '</td></tr>';
+		}
+
+		echo '</tbody></table>';
+	}
+
+	private static function renewals_box() {
+		$rows = TG_Subscription::renewals_due( 14, 30 );
+
+		echo '<h2 style="margin-top:26px;">Ending soon or lapsed</h2>';
+		echo '<p class="description">Subscriptions ending within 14 days, and those that lapsed in the last 30. A '
+			. 'renewal bought before the end date is added on top of the days left, so nobody loses time by renewing early.</p>';
+
+		echo '<table class="wp-list-table widefat striped" style="max-width:1100px;"><thead><tr>';
+		echo '<th style="width:28%;">Supplier</th><th style="width:16%;">Plan</th><th style="width:14%;">Ends</th>';
+		echo '<th style="width:12%;">Days left</th><th style="width:30%;">Reminders</th>';
+		echo '</tr></thead><tbody>';
+
+		if ( empty( $rows ) ) {
+			echo '<tr><td colspan="5">Nothing ending in the next 14 days.</td></tr>';
+		}
+
+		$labels = array(
+			'd14'    => '14 days',
+			'd7'     => '7 days',
+			'd1'     => '1 day',
+			'lapsed' => 'lapsed',
+		);
+
+		foreach ( $rows as $row ) {
+			$days = TG_Subscription::days_left( $row );
+			$sent = TG_Subscription::reminders_sent( $row );
+			$due  = TG_Subscription::reminder_due( $row );
+
+			echo '<tr>';
+			echo '<td><strong>' . esc_html( TG_Award::company_of( $row['supplier_id'] ) ) . '</strong></td>';
+			echo '<td>' . esc_html( $row['plan_name'] ) . '</td>';
+			echo '<td>' . esc_html( self::date( $row['ends_at'] ) ) . '</td>';
+			echo '<td>' . ( null === $days
+				? '-'
+				: ( $days < 0
+					? '<span style="color:#8a2424;">' . esc_html( sprintf( '%d days ago', abs( (int) $days ) ) ) . '</span>'
+					: esc_html( (string) (int) $days ) ) ) . '</td>';
+			echo '<td>';
+
+			if ( $sent ) {
+				$names = array();
+
+				foreach ( $sent as $key ) {
+					$names[] = isset( $labels[ $key ] ) ? $labels[ $key ] : $key;
+				}
+
+				echo esc_html( 'sent: ' . implode( ', ', $names ) );
+			} else {
+				echo '<span class="description">none sent</span>';
+			}
+
+			if ( $due ) {
+				echo '<br><span style="color:#8a2424;">' . esc_html( sprintf(
+					'%s notice could not be emailed%s - please contact them directly.',
+					isset( $labels[ $due ] ) ? $labels[ $due ] : $due,
+					! empty( $row['reminder_tried_at'] ) ? ' (last tried ' . self::date( $row['reminder_tried_at'] ) . ')' : ''
+				) ) . '</span>';
+			}
+
+			echo '</td></tr>';
+		}
+
+		echo '</tbody></table>';
+	}
+
+	private static function reminder_log_box() {
+		$log = TG_Subscription::reminder_log();
+
+		echo '<h2 style="margin-top:26px;">Reminder delivery log</h2>';
+
+		if ( empty( $log ) ) {
+			echo '<p class="description">No reminder has been attempted yet. The scheduler checks every five minutes '
+				. 'and warns a supplier 14, 7 and 1 day before their subscription ends, and once more when it lapses.</p>';
+
+			return;
+		}
+
+		$failed = 0;
+
+		foreach ( $log as $entry ) {
+			if ( empty( $entry['ok'] ) ) {
+				$failed++;
+			}
+		}
+
+		if ( $failed ) {
+			printf(
+				'<div class="notice notice-warning inline"><p><strong>%d of the last %d reminder emails could not be '
+				. 'sent.</strong> Outgoing mail is disabled on this hosting account, so this is expected until an SMTP '
+				. 'service is configured. The warning still appears on each supplier\'s own dashboard, and the list '
+				. 'above tells you who to contact.</p></div>',
+				(int) $failed,
+				count( $log )
+			);
+		}
+
+		echo '<table class="wp-list-table widefat striped" style="max-width:760px;"><thead><tr>';
+		echo '<th style="width:26%;">When</th><th style="width:34%;">Supplier</th><th style="width:20%;">Notice</th><th style="width:20%;">Emailed</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( array_slice( $log, 0, 20 ) as $entry ) {
+			echo '<tr>';
+			echo '<td>' . esc_html( self::date( isset( $entry['at'] ) ? $entry['at'] : '' ) ) . '</td>';
+			echo '<td>' . esc_html( TG_Award::company_of( isset( $entry['supplier'] ) ? $entry['supplier'] : 0 ) ) . '</td>';
+			echo '<td>' . esc_html( isset( $entry['milestone'] ) ? $entry['milestone'] : '-' ) . '</td>';
+			echo '<td>' . ( empty( $entry['ok'] )
+				? '<span style="color:#8a2424;">no</span>'
+				: '<span style="color:#1d7a3f;">yes</span>' ) . '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
 	}
 
 	/* ---------------------------------------------------------------- Plans */
@@ -304,6 +511,17 @@ class TG_Admin_Subscriptions {
 			. 'registered supplier full access to every tender for nothing. It exists so you can demonstrate the bidding '
 			. 'flow before plans are live - switch it back on afterwards.</p></td></tr>';
 
+		echo '<tr><th scope="row">Invoice issued by</th><td><textarea name="invoice_from" rows="4" class="large-text" style="max-width:560px;">'
+			. esc_textarea( get_option( 'tg_invoice_from', get_bloginfo( 'name' ) ) ) . '</textarea>';
+		echo '<p class="description">Your company name and address exactly as they should appear at the top of every '
+			. 'invoice a supplier prints.</p></td></tr>';
+
+		echo '<tr><th scope="row">How to pay</th><td><textarea name="payment_instructions" rows="4" class="large-text" style="max-width:560px;" '
+			. 'placeholder="Bank name, account name, account number, IBAN, and who to contact.">'
+			. esc_textarea( get_option( 'tg_payment_instructions', '' ) ) . '</textarea>';
+		echo '<p class="description">Shown to a supplier on their dashboard once they have requested a plan. Leave it '
+			. 'empty and they are simply told you will be in touch.</p></td></tr>';
+
 		echo '</tbody></table>';
 		submit_button( 'Save billing settings' );
 		echo '</form>';
@@ -363,6 +581,18 @@ class TG_Admin_Subscriptions {
 		self::finish( TG_Subscription::cancel( $id, 'Cancelled by admin.' ), 'Subscription cancelled. Access runs to the end of the paid period.' );
 	}
 
+	public static function handle_req_decline() {
+		$id = isset( $_GET['req'] ) ? (int) $_GET['req'] : 0;
+
+		self::guard( 'tg_req_decline_' . $id, false );
+
+		self::finish(
+			TG_Subscription::close_request( $id, TG_Subscription::DECLINED, 0, 'Declined by admin.' ),
+			'Request declined. The supplier keeps whatever access they already had.',
+			array( 'tab' => 'renewals' )
+		);
+	}
+
 	public static function handle_billing_save() {
 		self::guard( 'tg_billing_save' );
 
@@ -375,6 +605,9 @@ class TG_Admin_Subscriptions {
 		update_option( 'tg_invoice_prefix', $prefix ? $prefix : 'JT-INV-' );
 
 		update_option( 'tg_require_subscription', empty( $post['require_subscription'] ) ? 'no' : 'yes' );
+
+		update_option( 'tg_invoice_from', sanitize_textarea_field( isset( $post['invoice_from'] ) ? $post['invoice_from'] : '' ) );
+		update_option( 'tg_payment_instructions', sanitize_textarea_field( isset( $post['payment_instructions'] ) ? $post['payment_instructions'] : '' ) );
 
 		self::finish( true, 'Billing settings saved.', array( 'tab' => 'billing' ) );
 	}
