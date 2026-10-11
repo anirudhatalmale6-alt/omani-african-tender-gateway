@@ -103,8 +103,13 @@ echo "    option is REMOVED here - setting it to 'yes' first would mean this\n";
 echo "    test passed whatever the default actually was)\n";
 delete_option( 'tg_require_subscription' );
 ok( 'with no option stored at all, subscription is still required', TG_Access::subscription_required() );
-ok( 'no subscription provider is registered yet', ! TG_Access::subscriptions_available() );
-ok( 'so nobody counts as subscribed', ! TG_Access::is_subscribed( $verified ) );
+// Before M4 there was no subscription provider at all and nothing could
+// answer this. Now TG_Subscription does, so the meaningful property is no
+// longer "nobody can be subscribed" but "a supplier with no subscription
+// record is still refused" - which is what actually protects paid content.
+ok( 'a subscription provider is now registered (M4)', TG_Access::subscriptions_available() );
+ok( 'but a supplier with no subscription is still not subscribed', ! TG_Access::is_subscribed( $verified ) );
+ok( 'and has no subscription record at all', null === TG_Subscription::current( $verified ) );
 
 echo "\n== Visibility levels ==\n";
 ok( 'signed out is public',                 TG_Access::PUBLIC_LEVEL === TG_Access::level( 0 ) );
