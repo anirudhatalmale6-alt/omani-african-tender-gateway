@@ -79,7 +79,7 @@ $checked  = isset( $_POST['tg_sectors'] ) ? array_map( 'sanitize_text_field', (a
 				<legend>Sectors you supply</legend>
 				<p class="tg-fieldset__hint">We use these to match tender alerts to your business. Choose as many as apply.</p>
 				<div class="tg-checks">
-					<?php foreach ( TG_Sample_Data::sectors() as $sector ) : ?>
+					<?php foreach ( TG_Sectors::all() as $sector ) : ?>
 						<label class="tg-check tg-check--pill">
 							<input type="checkbox" name="tg_sectors[]" value="<?php echo esc_attr( $sector ); ?>" <?php checked( in_array( $sector, $checked, true ) ); ?>>
 							<span><?php echo esc_html( $sector ); ?></span>

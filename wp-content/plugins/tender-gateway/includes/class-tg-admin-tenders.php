@@ -81,11 +81,11 @@ class TG_Admin_Tenders {
 		$suppliers = (array) count_users();
 		$total_sup = isset( $suppliers['avail_roles'][ TG_Auth::ROLE ] ) ? (int) $suppliers['avail_roles'][ TG_Auth::ROLE ] : 0;
 
-		$verified = (int) $wpdb->get_var( $wpdb->prepare(
-			"SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE meta_key = %s AND meta_value = %s",
-			'tg_status',
-			'verified'
-		) );
+		// Counted through the same helper the Suppliers screen uses, so the two
+		// can never disagree about who is verified - a direct query here would
+		// miss accounts that predate verification and default to verified.
+		$by_supplier_status = TG_Admin_Suppliers::counts();
+		$verified           = (int) $by_supplier_status[ TG_Admin_Suppliers::VERIFIED ];
 
 		return array(
 			'suppliers'           => $total_sup,
@@ -113,8 +113,8 @@ class TG_Admin_Tenders {
 		$o = self::overview();
 
 		$tiles = array(
-			array( 'Suppliers', $o['suppliers'], '' ),
-			array( 'Unverified suppliers', $o['suppliers_unverified'], '' ),
+			array( 'Suppliers', $o['suppliers'], TG_Admin_Suppliers::url() ),
+			array( 'Unverified suppliers', $o['suppliers_unverified'], TG_Admin_Suppliers::url( array( 'status' => TG_Admin_Suppliers::PENDING ) ) ),
 			array( 'Tenders', $o['tenders'], self::list_url() ),
 			array( 'Awaiting approval', $o['by_status'][ TG_Status::PENDING ], self::list_url( array( 'status' => TG_Status::PENDING ) ) ),
 			array( 'Open for bidding', $o['by_status'][ TG_Status::OPEN ], self::list_url( array( 'status' => TG_Status::OPEN ) ) ),
@@ -333,7 +333,28 @@ class TG_Admin_Tenders {
 			. '<input name="unit" class="small-text" placeholder="kg, tonnes, units" value="' . esc_attr( $v( 'unit' ) ) . '">'
 		);
 
-		self::field( 'Category / sector', '<input name="sector" class="regular-text" value="' . esc_attr( $v( 'sector' ) ) . '">' );
+		$current_sector = $v( 'sector' );
+		$sector_options = '<select name="sector" class="regular-text"><option value="">&mdash; none &mdash;</option>';
+
+		foreach ( TG_Sectors::all() as $option ) {
+			$sector_options .= '<option value="' . esc_attr( $option ) . '"' . selected( $option, $current_sector, false ) . '>'
+				. esc_html( $option ) . '</option>';
+		}
+
+		// A tender filed under a sector that is no longer on the list would
+		// otherwise silently lose its category the next time it is saved.
+		if ( $current_sector && ! in_array( $current_sector, TG_Sectors::all(), true ) ) {
+			$sector_options .= '<option value="' . esc_attr( $current_sector ) . '" selected>'
+				. esc_html( $current_sector ) . ' (not on the list)</option>';
+		}
+
+		$sector_options .= '</select>';
+
+		self::field(
+			'Category / sector',
+			$sector_options,
+			'Chosen from the managed list. Suppliers only see tenders in the sectors they registered for, so this decides who can bid. Add missing sectors under Tender Gateway, Sectors.'
+		);
 		self::field( 'Country', '<input name="country" class="regular-text" value="' . esc_attr( $v( 'country', 'Oman' ) ) . '">' );
 		self::field( 'Delivery location', '<input name="delivery_location" class="regular-text" value="' . esc_attr( $v( 'delivery_location' ) ) . '">' );
 
