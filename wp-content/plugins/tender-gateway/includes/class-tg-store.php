@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_Store {
 
-	const DB_VERSION = '1.3.0';
+	const DB_VERSION = '1.4.0';
 
 	public static function table() {
 		global $wpdb;
@@ -39,6 +39,24 @@ class TG_Store {
 		global $wpdb;
 
 		return $wpdb->prefix . 'tg_documents';
+	}
+
+	/**
+	 * Subscription plans the admin defines. Nothing is hard-coded.
+	 */
+	public static function plans_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_plans';
+	}
+
+	/**
+	 * A supplier's subscription periods, one row per period bought.
+	 */
+	public static function subs_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_subscriptions';
 	}
 
 	/**
@@ -187,6 +205,60 @@ class TG_Store {
 		) {$collate};";
 
 		dbDelta( $sql_bids );
+
+		$plans = self::plans_table();
+
+		// Prices are DECIMAL, not float: these become VAT invoices.
+		$sql_plans = "CREATE TABLE {$plans} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			name VARCHAR(190) NOT NULL DEFAULT '',
+			description TEXT NULL,
+			price DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			currency VARCHAR(12) NOT NULL DEFAULT 'OMR',
+			period VARCHAR(12) NOT NULL DEFAULT 'monthly',
+			free_months INT UNSIGNED NOT NULL DEFAULT 0,
+			is_active TINYINT(1) NOT NULL DEFAULT 1,
+			sort_order INT NOT NULL DEFAULT 0,
+			created_at DATETIME NULL,
+			PRIMARY KEY  (id),
+			KEY is_active (is_active)
+		) {$collate};";
+
+		dbDelta( $sql_plans );
+
+		$subs = self::subs_table();
+
+		// One row per period bought, never overwritten - a supplier's billing
+		// history has to be reconstructable, and the invoice number is a legal
+		// record once issued.
+		$sql_subs = "CREATE TABLE {$subs} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			supplier_id BIGINT UNSIGNED NOT NULL,
+			plan_id BIGINT UNSIGNED NULL,
+			plan_name VARCHAR(190) NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'active',
+			starts_at DATETIME NULL,
+			ends_at DATETIME NULL,
+			price DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			vat_rate DECIMAL(6,3) NOT NULL DEFAULT 0.000,
+			vat_amount DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			total DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			currency VARCHAR(12) NOT NULL DEFAULT 'OMR',
+			invoice_no VARCHAR(40) NOT NULL DEFAULT '',
+			payment_method VARCHAR(40) NOT NULL DEFAULT '',
+			payment_ref VARCHAR(190) NOT NULL DEFAULT '',
+			note TEXT NULL,
+			created_by BIGINT UNSIGNED NULL,
+			created_at DATETIME NULL,
+			cancelled_at DATETIME NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY invoice_no (invoice_no),
+			KEY supplier_id (supplier_id),
+			KEY status (status),
+			KEY ends_at (ends_at)
+		) {$collate};";
+
+		dbDelta( $sql_subs );
 
 		update_option( 'tg_db_version', self::DB_VERSION );
 	}

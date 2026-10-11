@@ -1,0 +1,447 @@
+<?php
+/**
+ * Subscription admin: the plans, the VAT settings that appear on invoices,
+ * and the record of every period a supplier has bought.
+ *
+ * There is no payment gateway yet, so an administrator records a subscription
+ * against a payment they have seen - a bank transfer, usually. That is not a
+ * stopgap: the platform never handles the money in any design we have
+ * discussed, so recording and invoicing is the whole job.
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class TG_Admin_Subscriptions {
+
+	const SLUG = 'tg-subscriptions';
+
+	public static function init() {
+		add_action( 'admin_menu', array( __CLASS__, 'menu' ), 11 );
+		add_action( 'admin_post_tg_plan_save', array( __CLASS__, 'handle_plan_save' ) );
+		add_action( 'admin_post_tg_plan_delete', array( __CLASS__, 'handle_plan_delete' ) );
+		add_action( 'admin_post_tg_sub_start', array( __CLASS__, 'handle_start' ) );
+		add_action( 'admin_post_tg_sub_cancel', array( __CLASS__, 'handle_cancel' ) );
+		add_action( 'admin_post_tg_billing_save', array( __CLASS__, 'handle_billing_save' ) );
+	}
+
+	public static function menu() {
+		add_submenu_page(
+			'tender-gateway',
+			'Subscriptions',
+			'Subscriptions',
+			'manage_options',
+			self::SLUG,
+			array( __CLASS__, 'screen' )
+		);
+	}
+
+	public static function url( $args = array() ) {
+		return add_query_arg( array_merge( array( 'page' => self::SLUG ), $args ), admin_url( 'admin.php' ) );
+	}
+
+	public static function screen() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Not permitted.' );
+		}
+
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'subs';
+
+		echo '<div class="wrap"><h1>Subscriptions</h1>';
+		self::notice();
+
+		echo '<h2 class="nav-tab-wrapper">';
+
+		foreach ( array( 'subs' => 'Subscriptions', 'plans' => 'Plans', 'billing' => 'Billing &amp; VAT' ) as $key => $label ) {
+			printf(
+				'<a href="%s" class="nav-tab%s">%s</a>',
+				esc_url( self::url( array( 'tab' => $key ) ) ),
+				$tab === $key ? ' nav-tab-active' : '',
+				$label // phpcs:ignore WordPress.Security.EscapeOutput -- literal labels.
+			);
+		}
+
+		echo '</h2>';
+
+		if ( 'plans' === $tab ) {
+			self::plans_tab();
+		} elseif ( 'billing' === $tab ) {
+			self::billing_tab();
+		} else {
+			self::subs_tab();
+		}
+
+		echo '</div>';
+	}
+
+	/* -------------------------------------------------------- Subscriptions */
+
+	private static function subs_tab() {
+		global $wpdb;
+
+		$counts = TG_Subscription::counts();
+		$rows   = (array) $wpdb->get_results(
+			"SELECT * FROM " . TG_Store::subs_table() . " ORDER BY id DESC LIMIT 200",
+			ARRAY_A
+		);
+
+		printf(
+			'<p class="description">%d active, %d expired. Revenue invoiced to date: %s (net of VAT).</p>',
+			(int) $counts['active'],
+			(int) $counts['expired'],
+			esc_html( number_format( TG_Subscription::revenue(), 3 ) . ' ' . get_option( 'tg_currency', 'OMR' ) )
+		);
+
+		self::start_form();
+
+		echo '<h2 style="margin-top:22px;">Recorded subscriptions</h2>';
+		echo '<table class="wp-list-table widefat striped"><thead><tr>';
+		echo '<th style="width:19%;">Supplier</th><th style="width:13%;">Plan</th><th style="width:16%;">Period</th>';
+		echo '<th style="width:13%;">Invoice</th><th style="width:13%;">Total</th><th style="width:12%;">Payment</th>';
+		echo '<th style="width:8%;">Status</th><th style="width:6%;"></th>';
+		echo '</tr></thead><tbody>';
+
+		if ( empty( $rows ) ) {
+			echo '<tr><td colspan="8">No subscriptions recorded yet.</td></tr>';
+		}
+
+		foreach ( $rows as $row ) {
+			$company = TG_Award::company_of( $row['supplier_id'] );
+			$live    = strtotime( $row['ends_at'] ) > time()
+				&& in_array( $row['status'], array( TG_Subscription::ACTIVE, TG_Subscription::CANCELLED ), true );
+
+			echo '<tr>';
+			echo '<td><strong>' . esc_html( $company ) . '</strong></td>';
+			echo '<td>' . esc_html( $row['plan_name'] ) . '</td>';
+			echo '<td>' . esc_html( self::date( $row['starts_at'] ) . ' &ndash; ' . self::date( $row['ends_at'] ) ) . '</td>';
+			echo '<td><code>' . esc_html( $row['invoice_no'] ) . '</code></td>';
+			echo '<td>' . esc_html( number_format( (float) $row['total'], 3 ) . ' ' . $row['currency'] );
+			echo '<br><span class="description">' . esc_html( 'inc. VAT ' . number_format( (float) $row['vat_amount'], 3 ) ) . '</span></td>';
+			echo '<td>' . esc_html( $row['payment_method'] );
+
+			if ( $row['payment_ref'] ) {
+				echo '<br><span class="description">' . esc_html( $row['payment_ref'] ) . '</span>';
+			}
+
+			echo '</td>';
+			echo '<td>' . self::badge( $row['status'], $live ) . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput
+			echo '<td>';
+
+			if ( TG_Subscription::ACTIVE === $row['status'] && $live ) {
+				echo '<a class="button button-small" href="' . esc_url( wp_nonce_url(
+					add_query_arg( array( 'action' => 'tg_sub_cancel', 'sub' => (int) $row['id'] ), admin_url( 'admin-post.php' ) ),
+					'tg_sub_cancel_' . (int) $row['id']
+				) ) . '" onclick="return confirm(\'Cancel this subscription? Access continues until the end of the paid period, and there is no refund.\');">Cancel</a>';
+			}
+
+			echo '</td></tr>';
+		}
+
+		echo '</tbody></table>';
+		echo '<p class="description" style="margin-top:12px;">Cancelling stops the subscription renewing. Access runs to '
+			. 'the end of the period already paid for, and no refund is given - the rule you set.</p>';
+	}
+
+	private static function start_form() {
+		$plans = TG_Subscription::plans();
+
+		echo '<h2 style="margin-top:18px;">Record a subscription</h2>';
+
+		if ( empty( $plans ) ) {
+			echo '<div class="notice notice-warning inline"><p>No active plans yet. Create one on the Plans tab first.</p></div>';
+
+			return;
+		}
+
+		$suppliers = get_users( array( 'role' => TG_Auth::ROLE, 'orderby' => 'display_name' ) );
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="tg-startsub">';
+		wp_nonce_field( 'tg_sub_start' );
+		echo '<input type="hidden" name="action" value="tg_sub_start">';
+		echo '<table class="form-table" role="presentation"><tbody>';
+
+		echo '<tr><th scope="row">Supplier</th><td><select name="supplier_id" required style="min-width:320px;">';
+		echo '<option value="">&mdash; choose &mdash;</option>';
+
+		foreach ( $suppliers as $s ) {
+			$company = get_user_meta( $s->ID, 'tg_company', true );
+			$status  = TG_Admin_Suppliers::status_of( $s->ID );
+
+			printf(
+				'<option value="%d">%s (%s)</option>',
+				$s->ID,
+				esc_html( $company ? $company : $s->display_name ),
+				esc_html( TG_Admin_Suppliers::label( $status ) )
+			);
+		}
+
+		echo '</select><p class="description">A subscription can be recorded for any supplier, but only a '
+			. '<strong>verified</strong> one can bid.</p></td></tr>';
+
+		echo '<tr><th scope="row">Plan</th><td><select name="plan_id" required>';
+
+		foreach ( $plans as $p ) {
+			printf(
+				'<option value="%d">%s &mdash; %s %s, %s%s</option>',
+				(int) $p['id'],
+				esc_html( $p['name'] ),
+				esc_html( number_format( (float) $p['price'], 3 ) ),
+				esc_html( $p['currency'] ),
+				esc_html( TG_Subscription::periods()[ $p['period'] ] ),
+				$p['free_months'] ? esc_html( ' + ' . (int) $p['free_months'] . ' free month(s)' ) : ''
+			);
+		}
+
+		echo '</select></td></tr>';
+
+		echo '<tr><th scope="row">Payment method</th><td><input name="payment_method" class="regular-text" value="bank transfer"></td></tr>';
+		echo '<tr><th scope="row">Payment reference</th><td><input name="payment_ref" class="regular-text" placeholder="Transfer reference or receipt number">';
+		echo '<p class="description">Whatever lets you find this payment again on the bank statement.</p></td></tr>';
+		echo '<tr><th scope="row">Note</th><td><textarea name="note" rows="2" class="large-text" style="max-width:560px;"></textarea></td></tr>';
+		echo '</tbody></table>';
+
+		submit_button( 'Record subscription and issue invoice number' );
+		echo '</form>';
+	}
+
+	/* ---------------------------------------------------------------- Plans */
+
+	private static function plans_tab() {
+		$plans   = TG_Subscription::plans( false );
+		$editing = isset( $_GET['plan'] ) ? TG_Subscription::plan( (int) $_GET['plan'] ) : null;
+
+		echo '<table class="wp-list-table widefat striped" style="max-width:980px;margin-top:16px;"><thead><tr>';
+		echo '<th style="width:26%;">Plan</th><th style="width:14%;">Price</th><th style="width:14%;">Period</th>';
+		echo '<th style="width:14%;">Free months</th><th style="width:12%;">Active</th><th style="width:20%;"></th>';
+		echo '</tr></thead><tbody>';
+
+		if ( empty( $plans ) ) {
+			echo '<tr><td colspan="6">No plans yet. Create the first one below.</td></tr>';
+		}
+
+		foreach ( $plans as $p ) {
+			echo '<tr>';
+			echo '<td><strong>' . esc_html( $p['name'] ) . '</strong>';
+
+			if ( $p['description'] ) {
+				echo '<br><span class="description">' . esc_html( $p['description'] ) . '</span>';
+			}
+
+			echo '</td>';
+			echo '<td>' . esc_html( number_format( (float) $p['price'], 3 ) . ' ' . $p['currency'] ) . '</td>';
+			echo '<td>' . esc_html( TG_Subscription::periods()[ $p['period'] ] ) . '</td>';
+			echo '<td>' . (int) $p['free_months'] . '</td>';
+			echo '<td>' . ( $p['is_active'] ? 'Yes' : '<span class="description">No</span>' ) . '</td>';
+			echo '<td><a class="button button-small" href="' . esc_url( self::url( array( 'tab' => 'plans', 'plan' => (int) $p['id'] ) ) ) . '">Edit</a> ';
+			echo '<a class="button button-small" href="' . esc_url( wp_nonce_url(
+				add_query_arg( array( 'action' => 'tg_plan_delete', 'plan' => (int) $p['id'] ), admin_url( 'admin-post.php' ) ),
+				'tg_plan_delete_' . (int) $p['id']
+			) ) . '">Remove</a></td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+
+		echo '<h2 style="margin-top:22px;">' . ( $editing ? 'Edit plan' : 'Add a plan' ) . '</h2>';
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		wp_nonce_field( 'tg_plan_save' );
+		echo '<input type="hidden" name="action" value="tg_plan_save">';
+		echo '<input type="hidden" name="plan" value="' . esc_attr( $editing ? $editing['id'] : '' ) . '">';
+		echo '<table class="form-table" role="presentation"><tbody>';
+
+		$v = function ( $k, $d = '' ) use ( $editing ) {
+			return $editing && isset( $editing[ $k ] ) ? $editing[ $k ] : $d;
+		};
+
+		echo '<tr><th scope="row">Name</th><td><input name="name" class="regular-text" required value="' . esc_attr( $v( 'name' ) ) . '"></td></tr>';
+		echo '<tr><th scope="row">Description</th><td><textarea name="description" rows="2" class="large-text" style="max-width:560px;">' . esc_textarea( $v( 'description' ) ) . '</textarea></td></tr>';
+		echo '<tr><th scope="row">Price</th><td><input name="price" type="text" inputmode="decimal" class="small-text" value="' . esc_attr( $v( 'price', '0.000' ) ) . '"> ';
+		echo '<input name="currency" class="small-text" value="' . esc_attr( $v( 'currency', 'OMR' ) ) . '">';
+		echo '<p class="description">Price before VAT. VAT is added automatically at the rate on the Billing tab.</p></td></tr>';
+
+		echo '<tr><th scope="row">Billing period</th><td><select name="period">';
+
+		foreach ( TG_Subscription::periods() as $key => $label ) {
+			printf( '<option value="%s"%s>%s</option>', esc_attr( $key ), selected( $key, $v( 'period', 'monthly' ), false ), esc_html( $label ) );
+		}
+
+		echo '</select></td></tr>';
+		echo '<tr><th scope="row">Free months</th><td><input name="free_months" type="number" min="0" class="small-text" value="' . esc_attr( $v( 'free_months', '0' ) ) . '">';
+		echo '<p class="description">Added on top of the paid period. This is where the launch offer of one free month goes.</p></td></tr>';
+		echo '<tr><th scope="row">Active</th><td><label><input type="checkbox" name="is_active" value="1" ' . checked( 1, (int) $v( 'is_active', 1 ), false ) . '> Offer this plan</label></td></tr>';
+		echo '</tbody></table>';
+
+		submit_button( $editing ? 'Save plan' : 'Add plan' );
+		echo '</form>';
+	}
+
+	/* -------------------------------------------------------------- Billing */
+
+	private static function billing_tab() {
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="margin-top:16px;">';
+		wp_nonce_field( 'tg_billing_save' );
+		echo '<input type="hidden" name="action" value="tg_billing_save">';
+		echo '<table class="form-table" role="presentation"><tbody>';
+
+		echo '<tr><th scope="row">VAT number</th><td><input name="vat_number" class="regular-text" value="'
+			. esc_attr( TG_Subscription::vat_number() ) . '" placeholder="OM1100000000">';
+		echo '<p class="description">Printed on every subscription invoice. Required once you are VAT registered.</p></td></tr>';
+
+		echo '<tr><th scope="row">VAT rate</th><td><input name="vat_rate" type="text" inputmode="decimal" class="small-text" value="'
+			. esc_attr( TG_Subscription::vat_rate() ) . '"> %';
+		echo '<p class="description">Oman is 5%. The rate is stored on each invoice as it was at the time, so changing it '
+			. 'later does not rewrite old invoices.</p></td></tr>';
+
+		echo '<tr><th scope="row">Invoice prefix</th><td><input name="invoice_prefix" class="regular-text" value="'
+			. esc_attr( get_option( 'tg_invoice_prefix', 'JT-INV-' ) ) . '">';
+		echo '<p class="description">Invoice numbers are sequential and never reused, even if a subscription is removed - '
+			. 'that is a legal requirement, not a preference. Changing the prefix does not renumber anything already issued.</p></td></tr>';
+
+		echo '<tr><th scope="row">Require a subscription</th><td><label><input type="checkbox" name="require_subscription" value="1" '
+			. checked( true, TG_Access::subscription_required(), false ) . '> Suppliers must subscribe to see full tender detail and bid</label>';
+		echo '<p class="description" style="color:#8a2424;"><strong>Leave this on.</strong> Turning it off gives every '
+			. 'registered supplier full access to every tender for nothing. It exists so you can demonstrate the bidding '
+			. 'flow before plans are live - switch it back on afterwards.</p></td></tr>';
+
+		echo '</tbody></table>';
+		submit_button( 'Save billing settings' );
+		echo '</form>';
+	}
+
+	/* ------------------------------------------------------------- Handlers */
+
+	public static function handle_plan_save() {
+		self::guard( 'tg_plan_save' );
+
+		$post   = wp_unslash( $_POST );
+		$id     = isset( $post['plan'] ) ? (int) $post['plan'] : 0;
+		$result = TG_Subscription::save_plan( $post, $id );
+
+		self::finish( $result, $id ? 'Plan saved.' : 'Plan added.', array( 'tab' => 'plans' ) );
+	}
+
+	public static function handle_plan_delete() {
+		$id = isset( $_GET['plan'] ) ? (int) $_GET['plan'] : 0;
+
+		self::guard( 'tg_plan_delete_' . $id, false );
+
+		self::finish( TG_Subscription::delete_plan( $id ), 'Plan removed.', array( 'tab' => 'plans' ) );
+	}
+
+	public static function handle_start() {
+		self::guard( 'tg_sub_start' );
+
+		$post = wp_unslash( $_POST );
+
+		$result = TG_Subscription::start(
+			isset( $post['supplier_id'] ) ? (int) $post['supplier_id'] : 0,
+			isset( $post['plan_id'] ) ? (int) $post['plan_id'] : 0,
+			$post
+		);
+
+		if ( is_wp_error( $result ) ) {
+			self::finish( $result, '' );
+		}
+
+		$sub = TG_Subscription::get( $result );
+
+		self::finish( true, sprintf(
+			'Subscription recorded. Invoice %s issued for %s %s including VAT, running to %s.',
+			$sub['invoice_no'],
+			number_format( (float) $sub['total'], 3 ),
+			$sub['currency'],
+			self::date( $sub['ends_at'] )
+		) );
+	}
+
+	public static function handle_cancel() {
+		$id = isset( $_GET['sub'] ) ? (int) $_GET['sub'] : 0;
+
+		self::guard( 'tg_sub_cancel_' . $id, false );
+
+		self::finish( TG_Subscription::cancel( $id, 'Cancelled by admin.' ), 'Subscription cancelled. Access runs to the end of the paid period.' );
+	}
+
+	public static function handle_billing_save() {
+		self::guard( 'tg_billing_save' );
+
+		$post = wp_unslash( $_POST );
+
+		update_option( 'tg_vat_number', sanitize_text_field( isset( $post['vat_number'] ) ? $post['vat_number'] : '' ) );
+		update_option( 'tg_vat_rate', max( 0, (float) ( isset( $post['vat_rate'] ) ? $post['vat_rate'] : 5 ) ) );
+
+		$prefix = sanitize_text_field( isset( $post['invoice_prefix'] ) ? $post['invoice_prefix'] : 'JT-INV-' );
+		update_option( 'tg_invoice_prefix', $prefix ? $prefix : 'JT-INV-' );
+
+		update_option( 'tg_require_subscription', empty( $post['require_subscription'] ) ? 'no' : 'yes' );
+
+		self::finish( true, 'Billing settings saved.', array( 'tab' => 'billing' ) );
+	}
+
+	/* --------------------------------------------------------------- Helpers */
+
+	private static function guard( $nonce, $post = true ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Not permitted.' );
+		}
+
+		check_admin_referer( $nonce );
+	}
+
+	private static function finish( $result, $success, $args = array() ) {
+		set_transient(
+			'tg_admin_notice_' . get_current_user_id(),
+			is_wp_error( $result )
+				? array( 'type' => 'error', 'message' => $result->get_error_message() )
+				: array( 'type' => 'success', 'message' => $success ),
+			60
+		);
+
+		wp_safe_redirect( self::url( $args ) );
+		exit;
+	}
+
+	private static function notice() {
+		$key    = 'tg_admin_notice_' . get_current_user_id();
+		$notice = get_transient( $key );
+
+		if ( ! $notice ) {
+			return;
+		}
+
+		delete_transient( $key );
+
+		printf(
+			'<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
+			'error' === $notice['type'] ? 'error' : 'success',
+			esc_html( $notice['message'] )
+		);
+	}
+
+	private static function badge( $status, $live ) {
+		if ( $live && TG_Subscription::CANCELLED === $status ) {
+			$label  = 'Cancelled';
+			$colour = '#b26200';
+		} elseif ( $live ) {
+			$label  = 'Active';
+			$colour = '#1d7a3f';
+		} else {
+			$label  = 'Expired';
+			$colour = '#50575e';
+		}
+
+		return '<span style="display:inline-block;padding:2px 8px;border-radius:3px;background:' . esc_attr( $colour )
+			. ';color:#fff;font-size:11px;font-weight:600;">' . esc_html( $label ) . '</span>';
+	}
+
+	private static function date( $value ) {
+		if ( empty( $value ) ) {
+			return '-';
+		}
+
+		$time = strtotime( $value );
+
+		return $time ? date_i18n( 'j M Y', $time ) : (string) $value;
+	}
+}
