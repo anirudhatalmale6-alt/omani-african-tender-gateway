@@ -28,6 +28,7 @@ class TG_Admin_Tenders {
 		add_action( 'admin_post_tg_tender_save', array( __CLASS__, 'handle_save' ) );
 		add_action( 'admin_post_tg_tender_move', array( __CLASS__, 'handle_move' ) );
 		add_action( 'admin_post_tg_tender_doc_delete', array( __CLASS__, 'handle_doc_delete' ) );
+		add_action( 'admin_post_tg_tender_award', array( __CLASS__, 'handle_award' ) );
 		add_action( 'wp_dashboard_setup', array( __CLASS__, 'dashboard_widget' ) );
 	}
 
@@ -373,6 +374,7 @@ class TG_Admin_Tenders {
 
 		if ( $tender ) {
 			self::render_documents( $tender );
+			self::render_bids( $tender );
 			self::render_actions( $tender );
 			self::render_history( $tender );
 		}
@@ -406,6 +408,122 @@ class TG_Admin_Tenders {
 	}
 
 	/**
+	 * Bids received, and the award.
+	 *
+	 * Sealed bidding means this is the only place the prices are ever shown
+	 * together, and only after the tender has closed.
+	 */
+	private static function render_bids( $tender ) {
+		$bids   = TG_Award::comparison( $tender['id'] );
+		$award  = TG_Award::record( $tender );
+		$closed = in_array( $tender['status'], array( TG_Status::CLOSED, TG_Status::AWARDED ), true );
+
+		echo '<h2 id="bids">Bids received</h2>';
+
+		if ( empty( $bids ) ) {
+			echo '<p class="description">No bids yet.</p>';
+
+			return;
+		}
+
+		if ( ! $closed ) {
+			printf(
+				'<div class="notice notice-info inline"><p>%s</p></div>',
+				esc_html( sprintf(
+					'%d bid(s) received. Prices stay sealed until the tender closes - nobody sees them before then, including you.',
+					count( $bids )
+				) )
+			);
+
+			return;
+		}
+
+		if ( $award ) {
+			printf(
+				'<div class="notice notice-success inline"><p><strong>Awarded to %s</strong> at %s. Selected by %s on %s.%s</p></div>',
+				esc_html( $award['company'] ),
+				esc_html( $award['currency'] . ' ' . number_format( (float) $award['value'], 3 ) ),
+				esc_html( $award['selected_by'] ? $award['selected_by']->display_name : 'System' ),
+				esc_html( self::datetime( $award['selected_at'] ) ),
+				$award['reason'] ? '<br>Reason recorded: ' . esc_html( $award['reason'] ) : ''
+			);
+		}
+
+		echo '<table class="wp-list-table widefat striped" style="max-width:1000px;"><thead><tr>';
+		echo '<th>Supplier</th><th style="width:150px;">Price</th><th style="width:110px;">Delivery</th>';
+		echo '<th style="width:100px;">Validity</th><th style="width:140px;">Documents</th><th style="width:120px;">Status</th>';
+
+		if ( ! $award ) {
+			echo '<th style="width:110px;">Award</th>';
+		}
+
+		echo '</tr></thead><tbody>';
+
+		foreach ( $bids as $bid ) {
+			$live = TG_Bid::SUBMITTED === $bid['status'];
+
+			echo '<tr>';
+			echo '<td><strong>' . esc_html( $bid['company'] ) . '</strong>';
+
+			if ( ! empty( $bid['notes'] ) ) {
+				echo '<br><span class="description">' . esc_html( wp_trim_words( $bid['notes'], 24 ) ) . '</span>';
+			}
+
+			echo '</td>';
+			echo '<td>' . esc_html( $bid['currency'] . ' ' . number_format( (float) $bid['price'], 3 ) );
+
+			if ( ! empty( $bid['is_lowest'] ) ) {
+				echo ' <span style="background:#1d7a3f;color:#fff;font-size:10px;padding:1px 6px;border-radius:3px;">LOWEST</span>';
+			}
+
+			echo '</td>';
+			echo '<td>' . ( $bid['delivery_days'] ? esc_html( (int) $bid['delivery_days'] . ' days' ) : '&mdash;' ) . '</td>';
+			echo '<td>' . ( $bid['validity_days'] ? esc_html( (int) $bid['validity_days'] . ' days' ) : '&mdash;' ) . '</td>';
+
+			echo '<td>';
+
+			if ( empty( $bid['documents'] ) ) {
+				echo '&mdash;';
+			} else {
+				foreach ( $bid['documents'] as $doc ) {
+					echo '<a href="' . esc_url( TG_Docs::url( $doc ) ) . '">' . esc_html( $doc['filename'] ) . '</a><br>';
+				}
+			}
+
+			echo '</td>';
+			echo '<td>' . esc_html( TG_Bid::label( $bid['status'] ) ) . '</td>';
+
+			if ( ! $award ) {
+				echo '<td>';
+
+				if ( $live ) {
+					echo '<button type="submit" form="tg-award-form" name="bid_id" value="' . esc_attr( $bid['id'] )
+						. '" class="button button-primary" onclick="return confirm(\'Award this tender to ' . esc_attr( $bid['company'] ) . '? This cannot be undone.\');">Award</button>';
+				} else {
+					echo '&mdash;';
+				}
+
+				echo '</td>';
+			}
+
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+
+		if ( ! $award ) {
+			echo '<form id="tg-award-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+			wp_nonce_field( 'tg_tender_award' );
+			echo '<input type="hidden" name="action" value="tg_tender_award">';
+			echo '<input type="hidden" name="tender" value="' . esc_attr( (string) $tender['id'] ) . '">';
+			echo '<p><label for="tg_award_reason"><strong>Reason for the choice</strong></label><br>';
+			echo '<textarea name="reason" id="tg_award_reason" rows="2" class="large-text" style="max-width:640px;"></textarea><br>';
+			echo '<span class="description">Required only if you are not choosing the lowest bid. Kept permanently with the award.</span></p>';
+			echo '</form>';
+		}
+	}
+
+	/**
 	 * Buttons are derived from the transition rules, so this screen can never
 	 * offer a move the lifecycle forbids.
 	 */
@@ -413,6 +531,13 @@ class TG_Admin_Tenders {
 		$targets = array();
 
 		foreach ( array_keys( TG_Status::active() ) as $candidate ) {
+			// Awarding happens in the bids panel, where a winner is chosen and
+			// recorded. Offering it here would look like a second, simpler way
+			// to do the same thing, and it is not.
+			if ( TG_Status::AWARDED === $candidate ) {
+				continue;
+			}
+
 			if ( true === TG_Status::can_move( $tender['status'], $candidate ) ) {
 				$targets[] = $candidate;
 			}
@@ -568,6 +693,26 @@ class TG_Admin_Tenders {
 				? 'Tender approved and opened for bidding.'
 				: 'Tender moved to ' . TG_Status::label( $landed ) . '.'
 		);
+	}
+
+	public static function handle_award() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Not permitted.' );
+		}
+
+		check_admin_referer( 'tg_tender_award' );
+
+		$tender_id = isset( $_POST['tender'] ) ? (int) $_POST['tender'] : 0;
+		$bid_id    = isset( $_POST['bid_id'] ) ? (int) $_POST['bid_id'] : 0;
+		$reason    = isset( $_POST['reason'] ) ? sanitize_textarea_field( wp_unslash( $_POST['reason'] ) ) : '';
+
+		$result = TG_Award::award( $tender_id, $bid_id, get_current_user_id(), $reason );
+
+		if ( is_wp_error( $result ) ) {
+			self::redirect( self::edit_url( $tender_id ), 'error', $result->get_error_message() );
+		}
+
+		self::redirect( self::edit_url( $tender_id ), 'success', 'Tender awarded. Every bidder now sees their result.' );
 	}
 
 	public static function handle_doc_delete() {

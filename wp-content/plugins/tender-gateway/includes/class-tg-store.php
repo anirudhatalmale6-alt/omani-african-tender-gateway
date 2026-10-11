@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_Store {
 
-	const DB_VERSION = '1.2.0';
+	const DB_VERSION = '1.3.0';
 
 	public static function table() {
 		global $wpdb;
@@ -90,6 +90,17 @@ class TG_Store {
 			status_reason TEXT NULL,
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL,
+			awarded_bid_id BIGINT UNSIGNED NULL,
+			awarded_supplier_id BIGINT UNSIGNED NULL,
+			awarded_value DECIMAL(18,3) NULL,
+			award_reason TEXT NULL,
+			selected_by BIGINT UNSIGNED NULL,
+			selected_at DATETIME NULL,
+			approved_by BIGINT UNSIGNED NULL,
+			approved_at DATETIME NULL,
+			fee_percent DECIMAL(6,3) NULL,
+			fee_amount DECIMAL(18,3) NULL,
+			fee_party VARCHAR(20) NOT NULL DEFAULT '',
 			PRIMARY KEY  (id),
 			UNIQUE KEY source_external (source, external_id),
 			KEY deadline (deadline),

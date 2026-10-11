@@ -177,6 +177,18 @@ class TG_Tender {
 			return $check;
 		}
 
+		// Awarding must go through TG_Award, which records WHO won, at what
+		// price, and why if they were not cheapest. Allowing the generic status
+		// dropdown to set Awarded would produce an awarded tender with no
+		// winner attached - which is exactly the record a losing supplier
+		// would ask to see.
+		if ( TG_Status::AWARDED === $to && empty( $tender['awarded_bid_id'] ) ) {
+			return new WP_Error(
+				'tg_award_via_panel',
+				'Award this tender by choosing a winning bid in the "Bids received" panel, not by changing the status directly.'
+			);
+		}
+
 		$reason = trim( wp_strip_all_tags( (string) $reason ) );
 
 		if ( TG_Status::needs_reason( $to ) && '' === $reason ) {
