@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Tender Gateway
  * Description:  Tender feed, supplier registration and members-only tender access for the Omani-African Tender Gateway.
- * Version:      1.7.0
+ * Version:      1.8.0
  * Author:       Anirudha Talmale
  * Text Domain:  tender-gateway
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TG_VERSION', '1.7.0' );
+define( 'TG_VERSION', '1.8.0' );
 define( 'TG_FILE', __FILE__ );
 define( 'TG_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TG_URL', plugin_dir_url( __FILE__ ) );

@@ -537,15 +537,38 @@ class TG_Tender {
 	 * checked server-side on submission, never trusted from the page.
 	 */
 	public static function accepts_bids( $tender ) {
-		if ( ! is_array( $tender ) || TG_Status::OPEN !== $tender['status'] ) {
-			return false;
+		return 'open' === self::bidding_state( $tender );
+	}
+
+	/**
+	 * Why bidding is or is not possible, as a word.
+	 *
+	 * Split out because "not open yet" and "closed" are completely different
+	 * situations for a supplier, and reporting the first as the second sends
+	 * them away from a tender they could have bid on tomorrow.
+	 *
+	 * @return string open | not_yet | closed | unavailable
+	 */
+	public static function bidding_state( $tender ) {
+		if ( ! is_array( $tender ) || empty( $tender['status'] ) ) {
+			return 'unavailable';
 		}
 
-		if ( empty( $tender['closing_at'] ) ) {
-			return true;
+		$now = strtotime( current_time( 'mysql' ) );
+
+		if ( TG_Status::APPROVED === $tender['status'] ) {
+			return 'not_yet';
 		}
 
-		return strtotime( $tender['closing_at'] ) > strtotime( current_time( 'mysql' ) );
+		if ( TG_Status::OPEN !== $tender['status'] ) {
+			return 'closed';
+		}
+
+		if ( ! empty( $tender['closing_at'] ) && strtotime( $tender['closing_at'] ) <= $now ) {
+			return 'closed';
+		}
+
+		return 'open';
 	}
 
 	private static function log( $tender_id, $actor_id, $from, $to, $reason ) {

@@ -369,3 +369,120 @@ class TG_Sectors {
 		);
 	}
 }
+
+/**
+ * The managed list of countries, same idea as sectors.
+ *
+ * Country does not decide who may bid, so this is about data quality rather
+ * than correctness - but "Oman", "OMAN" and "Sultanate of Oman" as three
+ * separate filter entries is still a mess nobody wants to untangle later.
+ *
+ * Deliberately OPTIONAL on the tender form, as the client asked.
+ */
+class TG_Countries {
+
+	const OPTION = 'tg_countries_list';
+
+	public static function all() {
+		$stored = get_option( self::OPTION, null );
+
+		if ( null === $stored ) {
+			$seed = array_keys( TG_Sample_Data::countries() );
+			$seed[] = 'Oman';
+
+			$stored = array_values( array_unique( array_merge( $seed, self::in_use() ) ) );
+			sort( $stored );
+			update_option( self::OPTION, $stored, false );
+		}
+
+		return is_array( $stored ) ? $stored : array();
+	}
+
+	public static function in_use() {
+		global $wpdb;
+
+		$rows = $wpdb->get_col( "SELECT DISTINCT country FROM " . TG_Store::table() . " WHERE country <> ''" );
+
+		return array_values( array_unique( array_filter( (array) $rows ) ) );
+	}
+
+	public static function usage( $country ) {
+		global $wpdb;
+
+		return (int) $wpdb->get_var( $wpdb->prepare(
+			"SELECT COUNT(*) FROM " . TG_Store::table() . " WHERE country = %s",
+			$country
+		) );
+	}
+
+	public static function add( $name ) {
+		$name = trim( wp_strip_all_tags( (string) $name ) );
+
+		if ( '' === $name ) {
+			return new WP_Error( 'tg_country_empty', 'Please enter a country name.' );
+		}
+
+		$list = self::all();
+
+		foreach ( $list as $existing ) {
+			if ( 0 === strcasecmp( $existing, $name ) ) {
+				return new WP_Error( 'tg_country_exists', sprintf( '"%s" is already on the list.', $existing ) );
+			}
+		}
+
+		$list[] = $name;
+		sort( $list );
+		update_option( self::OPTION, $list, false );
+
+		return true;
+	}
+
+	public static function rename( $from, $to ) {
+		global $wpdb;
+
+		$to = trim( wp_strip_all_tags( (string) $to ) );
+
+		if ( '' === $to ) {
+			return new WP_Error( 'tg_country_empty', 'Please enter the new name.' );
+		}
+
+		$list = self::all();
+
+		if ( ! in_array( $from, $list, true ) ) {
+			return new WP_Error( 'tg_country_missing', 'That country is not on the list.' );
+		}
+
+		$wpdb->update( TG_Store::table(), array( 'country' => $to ), array( 'country' => $from ) );
+
+		$list = array_values( array_unique( array_map(
+			function ( $c ) use ( $from, $to ) {
+				return $c === $from ? $to : $c;
+			},
+			$list
+		) ) );
+
+		sort( $list );
+		update_option( self::OPTION, $list, false );
+
+		return true;
+	}
+
+	public static function delete( $name ) {
+		$used = self::usage( $name );
+
+		if ( $used ) {
+			return new WP_Error(
+				'tg_country_in_use',
+				sprintf( '"%s" is used by %d tender(s). Rename it instead, or move those tenders first.', $name, $used )
+			);
+		}
+
+		$list = array_values( array_filter( self::all(), function ( $c ) use ( $name ) {
+			return $c !== $name;
+		} ) );
+
+		update_option( self::OPTION, $list, false );
+
+		return true;
+	}
+}

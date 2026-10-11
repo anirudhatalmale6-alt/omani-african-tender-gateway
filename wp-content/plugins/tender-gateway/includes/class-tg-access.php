@@ -175,7 +175,21 @@ class TG_Access {
 
 		// Closing is checked against the clock, not against the displayed
 		// status, so a scheduler that has not run yet cannot let a late bid in.
-		if ( ! TG_Tender::accepts_bids( $tender ) ) {
+		//
+		// "Not open yet" is reported separately: telling a supplier a tender is
+		// closed when it simply has not opened yet sends them away from work
+		// they could still win.
+		$state = TG_Tender::bidding_state( $tender );
+
+		if ( 'not_yet' === $state ) {
+			$opens = ! empty( $tender['opening_at'] )
+				? ' It opens on ' . date_i18n( 'j F Y, H:i', strtotime( $tender['opening_at'] ) ) . '.'
+				: '';
+
+			return new WP_Error( 'tg_bid_not_open', 'This tender has not opened for bidding yet.' . $opens );
+		}
+
+		if ( 'open' !== $state ) {
 			return new WP_Error( 'tg_bid_closed', 'This tender is closed and is no longer accepting bids.' );
 		}
 

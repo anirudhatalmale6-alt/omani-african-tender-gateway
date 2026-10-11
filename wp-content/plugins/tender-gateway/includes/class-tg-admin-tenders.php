@@ -355,7 +355,22 @@ class TG_Admin_Tenders {
 			$sector_options,
 			'Chosen from the managed list. Suppliers only see tenders in the sectors they registered for, so this decides who can bid. Add missing sectors under Tender Gateway, Sectors.'
 		);
-		self::field( 'Country', '<input name="country" class="regular-text" value="' . esc_attr( $v( 'country', 'Oman' ) ) . '">' );
+		$current_country = $v( 'country' );
+		$country_options = '<select name="country" class="regular-text"><option value="">&mdash; not specified &mdash;</option>';
+
+		foreach ( TG_Countries::all() as $option ) {
+			$country_options .= '<option value="' . esc_attr( $option ) . '"' . selected( $option, $current_country, false ) . '>'
+				. esc_html( $option ) . '</option>';
+		}
+
+		if ( $current_country && ! in_array( $current_country, TG_Countries::all(), true ) ) {
+			$country_options .= '<option value="' . esc_attr( $current_country ) . '" selected>'
+				. esc_html( $current_country ) . ' (not on the list)</option>';
+		}
+
+		$country_options .= '</select>';
+
+		self::field( 'Country', $country_options, 'Optional. Chosen from a managed list so the filter does not fill up with spelling variations.' );
 		self::field( 'Delivery location', '<input name="delivery_location" class="regular-text" value="' . esc_attr( $v( 'delivery_location' ) ) . '">' );
 
 		self::field(
