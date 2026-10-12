@@ -24,6 +24,12 @@ class TG_API {
 	public static function all() {
 		$settings = tg_settings();
 
+		// Feed hidden: the site shows the platform's own tenders and nothing
+		// else. The feed is not deleted or unsynced - only kept off the page.
+		if ( ! self::feed_visible() ) {
+			return TG_Tender::public_records();
+		}
+
 		if ( 'remote' !== $settings['source'] ) {
 			$feed = self::index( TG_Sample_Data::tenders() );
 		} else {
@@ -44,10 +50,17 @@ class TG_API {
 	}
 
 	/**
+	 * Whether feed tenders (demonstration or live API) are shown on the site.
+	 */
+	public static function feed_visible() {
+		return (bool) tg_setting( 'show_feed', false );
+	}
+
+	/**
 	 * True when the site is showing records that came from the live API.
 	 */
 	public static function is_live() {
-		return 'remote' === tg_setting( 'source' ) && TG_Store::count( 'live' ) > 0;
+		return self::feed_visible() && 'remote' === tg_setting( 'source' ) && TG_Store::count( 'live' ) > 0;
 	}
 
 	/**
@@ -352,7 +365,9 @@ class TG_API {
 		}
 
 		$deadline = strtotime( $tender['deadline'] );
-		$today    = strtotime( gmdate( 'Y-m-d' ) );
+		// Today in Muscat, not in UTC - otherwise every card shows one day too
+		// many between midnight and 4am.
+		$today    = strtotime( current_time( 'Y-m-d' ) );
 
 		if ( ! $deadline ) {
 			return null;

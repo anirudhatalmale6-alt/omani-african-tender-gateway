@@ -130,7 +130,7 @@ foreach ( TG_API::all() as $tender ) {
 				<?php endif; ?>
 			</div>
 		</div>
-		<p class="tg-note">Profile editing, document uploads and company verification are part of the full platform build.</p>
+		<?php do_action( 'tg_dashboard_profile', $user ); ?>
 	</section>
 
 	<?php do_action( 'tg_dashboard_panels', $user ); ?>

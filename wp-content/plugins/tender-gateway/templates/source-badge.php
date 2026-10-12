@@ -10,6 +10,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// With the feed hidden every tender listed is the platform's own, so a line
+// about where feed records came from would describe nothing on the page.
+if ( ! TG_API::feed_visible() ) {
+	return;
+}
+
 $is_live     = TG_API::is_live();
 $count       = count( TG_API::all() );
 $last_synced = $is_live ? TG_Store::last_synced( 'live' ) : 0;

@@ -123,7 +123,9 @@ class TG_Admin_Subscriptions {
 
 		foreach ( $rows as $row ) {
 			$company = TG_Award::company_of( $row['supplier_id'] );
-			$live    = strtotime( $row['ends_at'] ) > time()
+			// Same frame as TG_Subscription::is_active(), or this badge and the
+			// real access rule disagree for the length of the timezone offset.
+			$live    = strtotime( $row['ends_at'] ) > strtotime( current_time( 'mysql' ) )
 				&& in_array( $row['status'], array( TG_Subscription::ACTIVE, TG_Subscription::CANCELLED ), true );
 
 			echo '<tr>';

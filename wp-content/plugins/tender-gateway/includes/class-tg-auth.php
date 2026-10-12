@@ -43,6 +43,18 @@ class TG_Auth {
 			return;
 		}
 
+		// Document downloads are served through admin-post.php, and WordPress
+		// fires admin_init there before the handler runs - so without this a
+		// supplier who had paid for a tender was bounced to their dashboard
+		// instead of receiving its documents. Only the download action is let
+		// through; TG_Docs::serve() makes its own access decision per file.
+		$script = isset( $_SERVER['SCRIPT_NAME'] ) ? basename( (string) $_SERVER['SCRIPT_NAME'] ) : '';
+		$action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : '';
+
+		if ( 'admin-post.php' === $script && 'tg_download' === $action ) {
+			return;
+		}
+
 		wp_safe_redirect( tg_page_url( 'dashboard' ) );
 		exit;
 	}

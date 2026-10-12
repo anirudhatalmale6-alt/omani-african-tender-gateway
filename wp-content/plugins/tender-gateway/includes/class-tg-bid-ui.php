@@ -210,7 +210,8 @@ class TG_Bid_UI {
 				<?php endif; ?>
 			</p>
 			<p style="margin:0;font-size:0.92em;color:#50575e;">
-				Submitted <?php echo esc_html( human_time_diff( strtotime( $bid['submitted_at'] ) ) ); ?> ago.
+				<?php // submitted_at is site-local; measure it against site-local now, not the UTC clock. ?>
+				Submitted <?php echo esc_html( human_time_diff( strtotime( $bid['submitted_at'] ), strtotime( current_time( 'mysql' ) ) ) ); ?> ago.
 				<?php if ( $open ) : ?>
 					You can change it or withdraw it until the tender closes.
 				<?php else : ?>

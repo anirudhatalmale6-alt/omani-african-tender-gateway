@@ -353,7 +353,7 @@ class TG_Admin_Tenders {
 		self::field(
 			'Category / sector',
 			$sector_options,
-			'Chosen from the managed list. Suppliers only see tenders in the sectors they registered for, so this decides who can bid. Add missing sectors under Tender Gateway, Sectors.'
+			'Chosen from the managed list. Suppliers can only bid on tenders in the sectors they registered for, so this decides who can bid. Add missing sectors under Tender Gateway, Sectors.'
 		);
 		$current_country = $v( 'country' );
 		$country_options = '<select name="country" class="regular-text"><option value="">&mdash; not specified &mdash;</option>';

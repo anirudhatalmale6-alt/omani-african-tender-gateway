@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Tender Gateway
  * Description:  Tender feed, supplier registration and members-only tender access for the Omani-African Tender Gateway.
- * Version:      1.9.0
+ * Version:      1.9.1
  * Author:       Anirudha Talmale
  * Text Domain:  tender-gateway
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TG_VERSION', '1.9.0' );
+define( 'TG_VERSION', '1.9.1' );
 define( 'TG_FILE', __FILE__ );
 define( 'TG_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TG_URL', plugin_dir_url( __FILE__ ) );
@@ -27,6 +27,7 @@ require_once TG_PATH . 'includes/class-tg-bid-ui.php';
 require_once TG_PATH . 'includes/class-tg-award.php';
 require_once TG_PATH . 'includes/class-tg-admin-tenders.php';
 require_once TG_PATH . 'includes/class-tg-admin-suppliers.php';
+require_once TG_PATH . 'includes/class-tg-supplier-docs.php';
 require_once TG_PATH . 'includes/class-tg-sectors.php';
 require_once TG_PATH . 'includes/class-tg-subscription.php';
 require_once TG_PATH . 'includes/class-tg-subscription-ui.php';
@@ -47,6 +48,12 @@ require_once TG_PATH . 'includes/class-tg-install.php';
 function tg_default_settings() {
 	return array(
 		'source'          => 'sample',   // sample | remote
+		// Whether tenders from the feed (demonstration or live API) appear on
+		// the public site at all. Off by default: the client asked for the API
+		// tenders to be hidden from the front end until the Ministry is ready,
+		// without removing any of the integration. The sync and the stored
+		// records carry on regardless, so switching this back on is one tick.
+		'show_feed'       => false,
 		'endpoint'        => '',
 		'api_key'         => '',
 		'auth_style'      => 'bearer',   // bearer | header | query
@@ -183,6 +190,7 @@ add_action( 'plugins_loaded', function () {
 	TG_Bid_UI::init();
 	TG_Admin_Tenders::init();
 	TG_Admin_Suppliers::init();
+	TG_Supplier_Docs::init();
 	TG_Sectors::init();
 	TG_Subscription::init();
 	TG_Subscription_UI::init();

@@ -277,6 +277,118 @@ if ( false === $keep ) {
 
 $wpdb->delete( TG_Store::plans_table(), array( 'id' => $gate_plan ) );
 
+echo "\n== A paying supplier can actually download what they paid for ==\n";
+
+// Downloads go through admin-post.php, where WordPress fires admin_init - the
+// hook that bounces suppliers out of wp-admin. That bounce used to catch the
+// download too, so a subscribed supplier was sent to their dashboard instead
+// of receiving the tender documents.
+$bounced = function ( $script, $action ) use ( $subbed ) {
+	$keep_server = $_SERVER;
+	$keep_req    = $_REQUEST;
+	$_SERVER['SCRIPT_NAME'] = $script;
+	$_REQUEST['action']     = $action;
+	wp_set_current_user( $subbed );
+
+	$trap = function ( $location ) {
+		throw new RuntimeException( 'redirected:' . $location );
+	};
+	add_filter( 'wp_redirect', $trap, 1 );
+
+	$was = false;
+
+	try {
+		TG_Auth::block_admin();
+	} catch ( RuntimeException $e ) {
+		$was = true;
+	}
+
+	remove_filter( 'wp_redirect', $trap, 1 );
+	wp_set_current_user( 0 );
+	$_SERVER  = $keep_server;
+	$_REQUEST = $keep_req;
+
+	return $was;
+};
+
+ok( 'a supplier fetching a document is not bounced', ! $bounced( '/wp-admin/admin-post.php', 'tg_download' ) );
+ok( 'a supplier opening the wp-admin dashboard still is', $bounced( '/wp-admin/index.php', '' ) );
+ok( 'and so is any other admin-post action', $bounced( '/wp-admin/admin-post.php', 'tg_plan_delete' ) );
+ok( 'the download action name does not open other admin screens', $bounced( '/wp-admin/options.php', 'tg_download' ) );
+
+echo "\n== A supplier's company documents are private to them ==\n";
+
+// CR certificates and licences are another company's papers. Only the supplier
+// who uploaded them and an administrator may open them - never a competitor,
+// whatever that competitor has paid for.
+$owner_doc = array(
+	'id' => 0, 'owner_type' => 'supplier', 'owner_id' => $unsub, 'uploaded_by' => $unsub,
+	'token' => 'x', 'path' => '', 'filename' => 'cr.pdf', 'mime' => 'application/pdf',
+);
+$admins = get_users( array( 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ) );
+
+ok( 'the supplier who uploaded it can open it', TG_Docs::check_access( $owner_doc, $unsub ) );
+ok( 'a subscribed competitor cannot', ! TG_Docs::check_access( $owner_doc, $subbed ) );
+ok( 'a signed-out visitor cannot', ! TG_Docs::check_access( $owner_doc, 0 ) );
+ok( 'an administrator can, to verify the company', $admins && TG_Docs::check_access( $owner_doc, (int) $admins[0] ) );
+
+echo "\n== A bid placed just now reads as just now, in Muscat time ==\n";
+
+// submitted_at is written in site-local time. Measuring it against the UTC
+// clock told a supplier their seconds-old bid was placed "4 hours ago".
+$keep_tz_s = get_option( 'timezone_string', false );
+$keep_tz_o = get_option( 'gmt_offset', false );
+update_option( 'timezone_string', 'Asia/Muscat' );
+update_option( 'gmt_offset', 4 );
+
+$fresh_bid = TG_Bid::submit( $paid, $subbed, array( 'price' => 500, 'currency' => 'OMR' ) );
+ok( 'the fixture bid was accepted', ! is_wp_error( $fresh_bid ) );
+
+wp_set_current_user( $subbed );
+ob_start();
+do_action( 'tg_after_tender_detail', TG_API::get( $ref ) );
+$panel = ob_get_clean();
+wp_set_current_user( 0 );
+
+ok( 'the panel shows the bid', false !== strpos( $panel, 'You have already bid' ) );
+ok( 'and does not claim it was placed hours ago', ! preg_match( '/Submitted\s+\d+\s+hours?\s+ago/', $panel ) );
+
+if ( false === $keep_tz_s ) { delete_option( 'timezone_string' ); } else { update_option( 'timezone_string', $keep_tz_s ); }
+if ( false === $keep_tz_o ) { delete_option( 'gmt_offset' ); } else { update_option( 'gmt_offset', $keep_tz_o ); }
+
+echo "\n== External tenders can be hidden from the site without deleting them ==\n";
+
+// The client asked for the API tenders to be kept off the front end until the
+// Ministry is ready - hidden, not removed. The default must be hidden, because
+// an update is what turns this on for him.
+$keep_settings = get_option( 'tg_settings', false );
+$s_hidden = is_array( $keep_settings ) ? $keep_settings : array();
+unset( $s_hidden['show_feed'] );
+update_option( 'tg_settings', $s_hidden );
+
+$sample_ids = array_values( array_filter( array_map( 'strval', wp_list_pluck( TG_Sample_Data::tenders(), 'id' ) ) ) );
+ok( 'the sample feed is not empty, so the checks below mean something', count( $sample_ids ) > 5 );
+$any_sample = $sample_ids[0];
+
+ok( 'with nothing saved, the feed is hidden by default', ! TG_API::feed_visible() );
+$listed = TG_API::all();
+ok( 'the site lists none of the feed tenders', 0 === count( array_intersect( array_keys( $listed ), $sample_ids ) ) );
+ok( 'but it does list the platform\'s own open tender', isset( $listed[ $ref ] ) );
+ok( 'a feed tender cannot be opened directly by URL either', null === TG_API::get( $any_sample ) );
+ok( 'and the listing carries no "demonstration feed" line', '' === trim( TG_Shortcodes::render( 'source-badge' ) ) );
+
+$s_shown = $s_hidden;
+$s_shown['show_feed'] = true;
+update_option( 'tg_settings', $s_shown );
+ok( 'ticking the box brings the feed back', TG_API::feed_visible() && null !== TG_API::get( $any_sample ) );
+ok( 'with the own tenders still first', isset( TG_API::all()[ $ref ] ) );
+
+if ( false === $keep_settings ) {
+	delete_option( 'tg_settings' );
+} else {
+	update_option( 'tg_settings', $keep_settings );
+}
+
 // Clean up.
 if ( false === $restore_requirement ) {
 	delete_option( 'tg_require_subscription' );

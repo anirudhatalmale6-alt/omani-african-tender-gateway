@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TGT_VERSION', '1.0.0' );
+define( 'TGT_VERSION', '1.0.1' );
 
 require_once get_template_directory() . '/inc/setup.php';
 

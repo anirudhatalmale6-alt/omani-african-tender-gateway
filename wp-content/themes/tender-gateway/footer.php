@@ -47,7 +47,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 			// them illustrative - saying "sample data" underneath live Rwandan
 			// tenders misleads a reader just as badly as the reverse would.
 			$tgt_live = class_exists( 'TG_API' ) && TG_API::is_live();
+
+			// With the feed hidden, every tender on the site is a real one the
+			// platform created. Calling them "illustrative" would be false.
+			$tgt_feed = class_exists( 'TG_API' ) && ( ! method_exists( 'TG_API', 'feed_visible' ) || TG_API::feed_visible() );
 			?>
+			<?php if ( $tgt_feed ) : ?>
 			<p class="tgt-footer__note">
 				<?php if ( $tgt_live ) : ?>
 					Tender data is received from TendersOnTime through the gateway's tender API integration layer and refreshed automatically.
@@ -55,6 +60,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					Tender data shown in this prototype is illustrative and is served through the gateway's tender API integration layer.
 				<?php endif; ?>
 			</p>
+			<?php endif; ?>
 		</div>
 	</div>
 </footer>

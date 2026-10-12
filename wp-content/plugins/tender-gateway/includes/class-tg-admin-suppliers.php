@@ -112,8 +112,9 @@ class TG_Admin_Suppliers {
 
 		echo '<div class="wrap"><h1>Suppliers</h1>';
 		self::notice();
-		echo '<p class="description">Suppliers register themselves. They can browse tender headlines straight away, '
-			. 'but only a verified supplier can see full specifications or submit a bid.</p>';
+		echo '<p class="description">Suppliers register themselves and can browse tender headlines straight away. '
+			. 'Verifying confirms who the company is - check their documents below - and only a verified supplier can bid. '
+			. 'Full specifications and documents additionally need an active subscription.</p>';
 
 		// Status tabs.
 		echo '<ul class="subsubsub">';
@@ -166,7 +167,21 @@ class TG_Admin_Suppliers {
 
 			echo '<tr>';
 			echo '<td><strong>' . esc_html( $meta( 'tg_company' ) ? $meta( 'tg_company' ) : $user->display_name ) . '</strong>';
-			echo '<br><span class="description">Registered ' . esc_html( date_i18n( 'j M Y', strtotime( $user->user_registered ) ) ) . '</span></td>';
+			echo '<br><span class="description">Registered ' . esc_html( date_i18n( 'j M Y', strtotime( $user->user_registered ) ) ) . '</span>';
+
+			// Documents sit under the company name rather than in a column of
+			// their own: this table is fixed-layout and already at 100%.
+			$docs = TG_Supplier_Docs::for_supplier( $user->ID );
+
+			if ( $docs ) {
+				foreach ( $docs as $doc ) {
+					echo '<br><a href="' . esc_url( TG_Docs::url( $doc ) ) . '">' . esc_html( $doc['label'] ? $doc['label'] : $doc['filename'] ) . '</a>';
+				}
+			} else {
+				echo '<br><span class="description" style="color:#b26200;">No documents uploaded</span>';
+			}
+
+			echo '</td>';
 			echo '<td>' . esc_html( $meta( 'tg_contact' ) ) . '</td>';
 			echo '<td><a href="mailto:' . esc_attr( $user->user_email ) . '">' . esc_html( $user->user_email ) . '</a></td>';
 			echo '<td>' . esc_html( $meta( 'tg_phone' ) );

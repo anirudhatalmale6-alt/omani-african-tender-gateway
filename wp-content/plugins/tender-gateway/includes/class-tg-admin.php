@@ -114,6 +114,7 @@ class TG_Admin {
 
 		update_option( 'tg_settings', array(
 			'source'         => $now_live ? 'remote' : 'sample',
+			'show_feed'      => ! empty( $post['show_feed'] ),
 			// esc_url_raw strips the {date} placeholder's braces, so keep the raw
 			// string and only validate that it is an http(s) URL.
 			'endpoint'       => isset( $post['endpoint'] ) ? self::clean_endpoint( $post['endpoint'] ) : '',
@@ -244,6 +245,13 @@ class TG_Admin {
 							<label><input type="radio" name="source" value="sample" <?php checked( $settings['source'], 'sample' ); ?>> Bundled demonstration tenders</label><br>
 							<label><input type="radio" name="source" value="remote" <?php checked( $settings['source'], 'remote' ); ?>> Live tender API (TendersOnTime)</label>
 							<p class="description">Switching to live turns on the 3-hourly sync. Until the first sync brings records in, the demonstration feed keeps the site populated.</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row">Show on the website</th>
+						<td>
+							<label><input type="checkbox" name="show_feed" value="1" <?php checked( ! empty( $settings['show_feed'] ) ); ?>> Show these external tenders on the public site, alongside your own</label>
+							<p class="description">Off: the site lists only the tenders you create under Tender Gateway, Tenders. The integration, the sync and any stored records are untouched - tick this again when the Ministry feed is ready.</p>
 						</td>
 					</tr>
 					<tr>
