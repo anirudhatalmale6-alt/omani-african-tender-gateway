@@ -29,6 +29,10 @@ class TG_Notify {
 		add_action( 'tg_bids_voided', array( __CLASS__, 'bids_voided' ), 10, 2 );
 		add_action( 'tg_tender_awarded', array( __CLASS__, 'tender_awarded' ), 10, 3 );
 		add_action( 'tg_tender_status_changed', array( __CLASS__, 'tender_status_changed' ), 20, 5 );
+		add_action( 'tg_commission_issued', array( __CLASS__, 'commission_issued' ) );
+		add_action( 'tg_commission_paid', array( __CLASS__, 'commission_paid' ) );
+		add_action( 'tg_commission_voided', array( __CLASS__, 'commission_voided' ) );
+		add_filter( 'tg_commission_send_reminder', array( __CLASS__, 'commission_reminder' ), 10, 3 );
 	}
 
 	/* -------------------------------------------------------------- Helpers */
@@ -298,6 +302,111 @@ class TG_Notify {
 				) );
 			}
 		}
+	}
+
+	/* ----------------------------------------------------------- Commission */
+
+	private static function commission_lines( $row ) {
+		$tender = TG_Tender::get( $row['tender_id'] );
+
+		return sprintf(
+			"Invoice: %s\nTender: %s\nAwarded value: %s\nCommission (%s%%): %s\nVAT: %s\nTotal: %s\nDue by: %s",
+			$row['invoice_no'],
+			self::tender_line( $tender ),
+			self::money( $row['awarded_value'], $row['currency'] ),
+			rtrim( rtrim( number_format( (float) $row['rate'], 3 ), '0' ), '.' ),
+			self::money( $row['amount'], $row['currency'] ),
+			self::money( $row['vat_amount'], $row['currency'] ),
+			self::money( $row['total'], $row['currency'] ),
+			date_i18n( 'j F Y', strtotime( $row['due_at'] ) )
+		);
+	}
+
+	private static function how_to_pay( $row ) {
+		$how = trim( (string) get_option( 'tg_payment_instructions', '' ) );
+
+		return ( $how ? "How to pay - please quote " . $row['invoice_no'] . ":\n" . $how . "\n\n" : '' )
+			. "View or print the invoice:\n" . TG_Commission_UI::invoice_url( $row['id'] );
+	}
+
+	public static function commission_issued( $id ) {
+		$row = TG_Commission::get( $id );
+		$s   = $row ? self::supplier( $row['supplier_id'] ) : null;
+
+		if ( ! $s ) {
+			return;
+		}
+
+		self::send( $s['email'], 'Commission invoice ' . $row['invoice_no'], sprintf(
+			"Dear %s,\n\nThe tender below has been completed. As set out in the supplier terms, the platform commission is now due.\n\n%s\n\n%s\n\nIf it is not paid by the due date, new bids are paused until it is. Bids you have already placed are not affected.",
+			$s['greet'],
+			self::commission_lines( $row ),
+			self::how_to_pay( $row )
+		) );
+	}
+
+	public static function commission_paid( $id ) {
+		$row = TG_Commission::get( $id );
+		$s   = $row ? self::supplier( $row['supplier_id'] ) : null;
+
+		if ( ! $s ) {
+			return;
+		}
+
+		self::send( $s['email'], 'Payment received - ' . $row['invoice_no'], sprintf(
+			"Dear %s,\n\nThank you - we have recorded your payment of %s for commission invoice %s.\n\nThe paid invoice is on your dashboard:\n%s",
+			$s['greet'],
+			self::money( $row['total'], $row['currency'] ),
+			$row['invoice_no'],
+			TG_Commission_UI::invoice_url( $row['id'] )
+		) );
+	}
+
+	public static function commission_voided( $id ) {
+		$row = TG_Commission::get( $id );
+		$s   = $row ? self::supplier( $row['supplier_id'] ) : null;
+
+		if ( ! $s ) {
+			return;
+		}
+
+		self::send( $s['email'], 'Commission invoice cancelled - ' . $row['invoice_no'], sprintf(
+			"Dear %s,\n\nCommission invoice %s has been cancelled, and nothing is owed on it.\n\nReason: %s",
+			$s['greet'],
+			$row['invoice_no'],
+			$row['void_reason']
+		) );
+	}
+
+	/**
+	 * Returns whether the reminder really went, so TG_Commission records it
+	 * only when it did.
+	 */
+	public static function commission_reminder( $sent, $row, $band ) {
+		$s = self::supplier( $row['supplier_id'] );
+
+		if ( ! $s ) {
+			return false;
+		}
+
+		if ( 'pre' === $band ) {
+			$subject = 'Commission due soon - ' . $row['invoice_no'];
+			$opening = 'A reminder that the commission invoice below is due in the next few days.';
+		} elseif ( 'due' === $band ) {
+			$subject = 'Commission due today - ' . $row['invoice_no'];
+			$opening = 'The commission invoice below is due today. If it is not paid, new bids are paused from tomorrow until it is.';
+		} else {
+			$subject = 'Commission overdue - ' . $row['invoice_no'];
+			$opening = 'The commission invoice below is overdue, so new bids are paused until it is paid. Bids you have already placed are not affected.';
+		}
+
+		return self::send( $s['email'], $subject, sprintf(
+			"Dear %s,\n\n%s\n\n%s\n\n%s",
+			$s['greet'],
+			$opening,
+			self::commission_lines( $row ),
+			self::how_to_pay( $row )
+		) );
 	}
 
 	/* --------------------------------------------------------------- Admin */

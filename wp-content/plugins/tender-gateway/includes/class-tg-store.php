@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class TG_Store {
 
-	const DB_VERSION = '1.5.0';
+	const DB_VERSION = '1.6.0';
 
 	public static function table() {
 		global $wpdb;
@@ -67,6 +67,15 @@ class TG_Store {
 		global $wpdb;
 
 		return $wpdb->prefix . 'tg_sub_requests';
+	}
+
+	/**
+	 * Commission invoices: one per completed tender, never deleted.
+	 */
+	public static function commissions_table() {
+		global $wpdb;
+
+		return $wpdb->prefix . 'tg_commissions';
 	}
 
 	/**
@@ -297,6 +306,45 @@ class TG_Store {
 		) {$collate};";
 
 		dbDelta( $sql_requests );
+
+		$commissions = self::commissions_table();
+
+		// One row per completed tender (UNIQUE tender_id), so completing the
+		// same tender twice can never bill twice. Rows are voided, never
+		// deleted: an issued invoice number is a tax record.
+		$sql_commissions = "CREATE TABLE {$commissions} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			tender_id BIGINT UNSIGNED NOT NULL,
+			supplier_id BIGINT UNSIGNED NOT NULL,
+			bid_id BIGINT UNSIGNED NULL,
+			awarded_value DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			rate DECIMAL(6,3) NOT NULL DEFAULT 0.000,
+			amount DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			vat_rate DECIMAL(6,3) NOT NULL DEFAULT 0.000,
+			vat_amount DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			total DECIMAL(18,3) NOT NULL DEFAULT 0.000,
+			currency VARCHAR(12) NOT NULL DEFAULT 'OMR',
+			invoice_no VARCHAR(40) NOT NULL DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'due',
+			issued_at DATETIME NULL,
+			due_at DATETIME NULL,
+			paid_at DATETIME NULL,
+			payment_method VARCHAR(40) NOT NULL DEFAULT '',
+			payment_ref VARCHAR(190) NOT NULL DEFAULT '',
+			recorded_by BIGINT UNSIGNED NULL,
+			void_reason TEXT NULL,
+			voided_at DATETIME NULL,
+			reminders_sent VARCHAR(190) NOT NULL DEFAULT '',
+			reminder_tried_at DATETIME NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY tender_id (tender_id),
+			UNIQUE KEY invoice_no (invoice_no),
+			KEY supplier_id (supplier_id),
+			KEY status (status),
+			KEY due_at (due_at)
+		) {$collate};";
+
+		dbDelta( $sql_commissions );
 
 		update_option( 'tg_db_version', self::DB_VERSION );
 	}

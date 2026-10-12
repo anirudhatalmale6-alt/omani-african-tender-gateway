@@ -244,6 +244,10 @@ class TG_Bid_UI {
 				. '<a class="tg-link" href="' . esc_url( tg_page_url( 'register' ) ) . '">or register as a supplier</a>';
 		} elseif ( 'tg_bid_unsubscribed' === $code && TG_Access::subscriptions_available() ) {
 			$action = '<a class="tg-btn tg-btn--accent" href="' . esc_url( tg_page_url( 'dashboard' ) ) . '">View subscription plans</a>';
+		} elseif ( 'tg_bid_terms' === $code ) {
+			$action = '<a class="tg-btn tg-btn--accent" href="' . esc_url( tg_page_url( 'dashboard' ) ) . '">Review and accept the terms</a>';
+		} elseif ( 'tg_bid_commission_overdue' === $code ) {
+			$action = '<a class="tg-btn tg-btn--accent" href="' . esc_url( tg_page_url( 'dashboard' ) ) . '">View the invoice</a>';
 		} elseif ( 'tg_bid_unverified' === $code ) {
 			$action = '<span class="tg-link">We will email you as soon as your account is approved.</span>';
 		}

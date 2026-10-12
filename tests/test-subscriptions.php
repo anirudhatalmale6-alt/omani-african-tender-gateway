@@ -54,6 +54,10 @@ function sup( $slug ) {
 
 	( new WP_User( $id ) )->set_role( TG_Auth::ROLE );
 	update_user_meta( $id, 'tg_status', 'verified' );
+	// As at registration: a real supplier accepts the terms to sign up.
+	if ( class_exists( 'TG_Terms' ) ) {
+		TG_Terms::accept( $id, '127.0.0.1' );
+	}
 	$users[] = $id;
 
 	return $id;

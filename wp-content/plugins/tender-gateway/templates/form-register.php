@@ -88,6 +88,18 @@ $checked  = isset( $_POST['tg_sectors'] ) ? array_map( 'sanitize_text_field', (a
 				</div>
 			</fieldset>
 
+			<?php if ( class_exists( 'TG_Terms' ) ) : ?>
+				<fieldset class="tg-fieldset">
+					<legend>Supplier terms</legend>
+					<?php echo TG_Terms::box_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside. ?>
+					<input type="hidden" name="tg_terms_version" value="<?php echo esc_attr( (string) TG_Terms::version() ); ?>">
+					<label class="tg-check" style="margin-top:10px;display:flex;gap:8px;align-items:flex-start;">
+						<input type="checkbox" name="tg_terms_agree" value="1" required>
+						<span>I have read and accept the supplier terms, including the commission, on behalf of my company.</span>
+					</label>
+				</fieldset>
+			<?php endif; ?>
+
 			<button type="submit" class="tg-btn tg-btn--accent tg-btn--block tg-btn--lg">Create my supplier account</button>
 			<p class="tg-form__legal">By registering you agree that your company details may be shared with the Ministry for verification purposes.</p>
 		</form>

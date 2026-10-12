@@ -14,9 +14,15 @@ $sectors  = array_filter( $sectors );
 $saved    = TG_Saved::tenders( $user->ID );
 $welcome  = ! empty( $_GET['welcome'] );
 
+// Only tenders a supplier can still act on. Awarded and completed tenders
+// stay public, but counting them as "open" would mislead.
+$open_now = array_filter( TG_API::all(), function ( $tender ) {
+	return empty( $tender['status'] ) || TG_Status::OPEN === $tender['status'] || TG_Status::APPROVED === $tender['status'];
+} );
+
 // Tenders matching the supplier's declared sectors.
 $matched = array();
-foreach ( TG_API::all() as $tender ) {
+foreach ( $open_now as $tender ) {
 	if ( $sectors && in_array( $tender['sector'], $sectors, true ) ) {
 		$matched[] = $tender;
 	}
@@ -26,7 +32,7 @@ usort( $matched, function ( $a, $b ) {
 } );
 
 $closing_soon = 0;
-foreach ( TG_API::all() as $tender ) {
+foreach ( $open_now as $tender ) {
 	$days = TG_API::days_left( $tender );
 	if ( null !== $days && $days >= 0 && $days <= 14 ) {
 		$closing_soon++;
@@ -53,7 +59,7 @@ foreach ( TG_API::all() as $tender ) {
 
 	<div class="tg-stats">
 		<div class="tg-stat">
-			<strong><?php echo esc_html( number_format_i18n( count( TG_API::all() ) ) ); ?></strong>
+			<strong><?php echo esc_html( number_format_i18n( count( $open_now ) ) ); ?></strong>
 			<span>Open tenders on the gateway</span>
 		</div>
 		<div class="tg-stat">

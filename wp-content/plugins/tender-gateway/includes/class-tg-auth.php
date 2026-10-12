@@ -192,6 +192,13 @@ class TG_Auth {
 
 			return;
 		}
+		// Checked on the server too: "required" in the browser is a courtesy,
+		// and the commission rests on this agreement being real.
+		if ( class_exists( 'TG_Terms' ) && empty( $_POST['tg_terms_agree'] ) ) {
+			self::add_error( 'Please read and accept the supplier terms to register.' );
+
+			return;
+		}
 
 		$user_id = wp_insert_user( array(
 			'user_login'   => $email,
@@ -221,6 +228,11 @@ class TG_Auth {
 		// demonstration site; it is not fine on a platform where bidding
 		// commits a real company to a real price.
 		update_user_meta( $user_id, 'tg_status', 'pending' );
+
+		// Record acceptance only if the version they read is still current.
+		if ( class_exists( 'TG_Terms' ) && (int) ( isset( $_POST['tg_terms_version'] ) ? $_POST['tg_terms_version'] : 0 ) === TG_Terms::version() ) {
+			TG_Terms::accept( $user_id );
+		}
 
 		do_action( 'tg_supplier_registered', $user_id );
 

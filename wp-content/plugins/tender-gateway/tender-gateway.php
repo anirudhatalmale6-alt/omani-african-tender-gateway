@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Tender Gateway
  * Description:  Tender feed, supplier registration and members-only tender access for the Omani-African Tender Gateway.
- * Version:      1.10.0
+ * Version:      1.11.0
  * Author:       Anirudha Talmale
  * Text Domain:  tender-gateway
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TG_VERSION', '1.10.0' );
+define( 'TG_VERSION', '1.11.0' );
 define( 'TG_FILE', __FILE__ );
 define( 'TG_PATH', plugin_dir_path( __FILE__ ) );
 define( 'TG_URL', plugin_dir_url( __FILE__ ) );
@@ -32,6 +32,10 @@ require_once TG_PATH . 'includes/class-tg-sectors.php';
 require_once TG_PATH . 'includes/class-tg-subscription.php';
 require_once TG_PATH . 'includes/class-tg-subscription-ui.php';
 require_once TG_PATH . 'includes/class-tg-admin-subscriptions.php';
+require_once TG_PATH . 'includes/class-tg-terms.php';
+require_once TG_PATH . 'includes/class-tg-commission.php';
+require_once TG_PATH . 'includes/class-tg-commission-ui.php';
+require_once TG_PATH . 'includes/class-tg-admin-commissions.php';
 require_once TG_PATH . 'includes/class-tg-mailer.php';
 require_once TG_PATH . 'includes/class-tg-notify.php';
 require_once TG_PATH . 'includes/class-tg-sync.php';
@@ -197,6 +201,10 @@ add_action( 'plugins_loaded', function () {
 	TG_Subscription::init();
 	TG_Subscription_UI::init();
 	TG_Admin_Subscriptions::init();
+	TG_Terms::init();
+	TG_Commission::init();
+	TG_Commission_UI::init();
+	TG_Admin_Commissions::init();
 	TG_Mailer::init();
 	TG_Notify::init();
 

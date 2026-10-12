@@ -87,6 +87,10 @@ function sup( $slug, $verified = true ) {
 	update_user_meta( $id, 'tg_contact', 'Contact ' . ucfirst( $slug ) );
 	update_user_meta( $id, 'tg_sectors', array( 'TEST Sector' ) );
 	update_user_meta( $id, 'tg_status', $verified ? 'verified' : 'pending' );
+	// As at registration: a real supplier accepts the terms to sign up.
+	if ( class_exists( 'TG_Terms' ) ) {
+		TG_Terms::accept( $id, '127.0.0.1' );
+	}
 	$users[] = $id;
 
 	return $id;
