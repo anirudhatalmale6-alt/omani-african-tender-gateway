@@ -118,7 +118,13 @@ class TG_Admin {
 			// esc_url_raw strips the {date} placeholder's braces, so keep the raw
 			// string and only validate that it is an http(s) URL.
 			'endpoint'       => isset( $post['endpoint'] ) ? self::clean_endpoint( $post['endpoint'] ) : '',
-			'api_key'        => isset( $post['api_key'] ) ? sanitize_text_field( $post['api_key'] ) : '',
+			// The key is never printed back into the form, so an empty field
+			// means "keep the saved key", not "remove it".
+			'api_key'        => ! empty( $post['remove_api_key'] )
+				? ''
+				: ( isset( $post['api_key'] ) && '' !== trim( (string) $post['api_key'] )
+					? sanitize_text_field( $post['api_key'] )
+					: $settings['api_key'] ),
 			'auth_style'     => isset( $post['auth_style'] ) && in_array( $post['auth_style'], array( 'bearer', 'header', 'query' ), true ) ? $post['auth_style'] : 'bearer',
 			'auth_header'    => isset( $post['auth_header'] ) ? sanitize_text_field( $post['auth_header'] ) : 'X-API-Key',
 			'auth_query_key' => isset( $post['auth_query_key'] ) ? sanitize_text_field( $post['auth_query_key'] ) : 'api_key',
@@ -264,8 +270,17 @@ class TG_Admin {
 					<tr>
 						<th scope="row"><label for="tg-key">API key</label></th>
 						<td>
-							<input type="text" class="regular-text code" id="tg-key" name="api_key" value="<?php echo esc_attr( $settings['api_key'] ); ?>" autocomplete="off">
-							<p class="description">Masked everywhere it would otherwise be printed, including the data flow screen.</p>
+							<?php
+							// Never echo the key into the page: it would show on any screen-share
+							// and sit in the HTML source. Only the last four characters are shown.
+							$tg_key_saved = (string) $settings['api_key'];
+							$tg_key_mask  = '' !== $tg_key_saved ? str_repeat( '•', 12 ) . substr( $tg_key_saved, -4 ) : '';
+							?>
+							<input type="password" class="regular-text code" id="tg-key" name="api_key" value="" autocomplete="new-password" placeholder="<?php echo esc_attr( $tg_key_mask ? 'Saved: ' . $tg_key_mask : 'Paste the API key here' ); ?>">
+							<p class="description">Leave empty to keep the saved key. It is never shown again once saved, and is masked everywhere else, including the data flow screen.</p>
+							<?php if ( '' !== $tg_key_saved ) : ?>
+								<label><input type="checkbox" name="remove_api_key" value="1"> Remove the saved key</label>
+							<?php endif; ?>
 						</td>
 					</tr>
 					<tr>
