@@ -33,6 +33,8 @@ class TG_Notify {
 		add_action( 'tg_commission_paid', array( __CLASS__, 'commission_paid' ) );
 		add_action( 'tg_commission_voided', array( __CLASS__, 'commission_voided' ) );
 		add_filter( 'tg_commission_send_reminder', array( __CLASS__, 'commission_reminder' ), 10, 3 );
+		add_filter( 'tg_buyer_send_invite', array( __CLASS__, 'buyer_invite' ), 10, 3 );
+		add_action( 'tg_tender_status_changed', array( __CLASS__, 'buyer_tender_status' ), 21, 5 );
 	}
 
 	/* -------------------------------------------------------------- Helpers */
@@ -301,6 +303,98 @@ class TG_Notify {
 					tg_page_url( 'tenders' )
 				) );
 			}
+		}
+	}
+
+	/* --------------------------------------------------------------- Buyers */
+
+	/**
+	 * The invitation for a new buyer account. Returns whether it really went,
+	 * so the admin screen can offer the link by hand if it did not.
+	 */
+	public static function buyer_invite( $sent, $user_id, $link ) {
+		$user = get_userdata( (int) $user_id );
+
+		if ( ! $user ) {
+			return false;
+		}
+
+		$contact = (string) get_user_meta( $user->ID, 'tg_buyer_contact', true );
+
+		return self::send( $user->user_email, 'Your buyer account', sprintf(
+			"Dear %s,\n\nA buyer account has been created for %s on %s, so you can publish your own tenders.\n\n1. Set your password using this link (it works once):\n%s\n\n2. Then sign in here:\n%s\n\n3. Your buyer portal, where you create and follow your tenders:\n%s\n\nIf you were not expecting this email, you can ignore it.",
+			$contact ? $contact : TG_Buyer::organisation( $user->ID ),
+			TG_Buyer::organisation( $user->ID ),
+			get_bloginfo( 'name' ),
+			$link,
+			TG_Auth::login_url( TG_Buyer::portal_url() ),
+			TG_Buyer::portal_url()
+		) );
+	}
+
+	/**
+	 * Keep a buyer informed about their own tender, and tell the team when a
+	 * buyer has submitted one for approval.
+	 */
+	public static function buyer_tender_status( $tender_id, $from, $to, $actor_id, $reason ) {
+		$tender = TG_Tender::get( $tender_id );
+
+		if ( ! $tender || empty( $tender['owner_id'] ) || ! TG_Buyer::is_buyer( (int) $tender['owner_id'] ) ) {
+			return;
+		}
+
+		$owner = get_userdata( (int) $tender['owner_id'] );
+		$org   = TG_Buyer::organisation( $owner->ID );
+		$view  = TG_Buyer::portal_url( array( 'tender' => (int) $tender_id ) );
+
+		if ( TG_Status::PENDING === $to ) {
+			self::to_admin( 'Tender submitted for approval: ' . $tender['external_id'], sprintf(
+				"%s has submitted a tender for your approval.\n\n%s\nCloses: %s\n\nReview it and approve or reject it here:\n%s",
+				$org,
+				self::tender_line( $tender ),
+				$tender['closing_at'] ? date_i18n( 'j F Y, H:i', strtotime( $tender['closing_at'] ) ) : '-',
+				admin_url( 'admin.php?page=' . TG_Admin_Tenders::EDIT_SLUG . '&tender=' . (int) $tender_id )
+			) );
+
+			return;
+		}
+
+		$subject = '';
+		$body    = '';
+
+		if ( TG_Status::OPEN === $to ) {
+			$subject = 'Your tender is live: ' . $tender['external_id'];
+			$body    = sprintf( "%s is now published and open for bidding until %s.\n\nSee it as suppliers do:\n%s\n\nFollow it in your buyer portal:\n%s",
+				self::tender_line( $tender ),
+				date_i18n( 'j F Y, H:i', strtotime( $tender['closing_at'] ) ),
+				tg_tender_url( $tender['external_id'] ),
+				$view );
+		} elseif ( TG_Status::APPROVED === $to && ! empty( $tender['opening_at'] ) ) {
+			$subject = 'Your tender is approved: ' . $tender['external_id'];
+			$body    = sprintf( "%s has been approved. It opens for bidding on %s.\n\n%s",
+				self::tender_line( $tender ),
+				date_i18n( 'j F Y, H:i', strtotime( $tender['opening_at'] ) ),
+				$view );
+		} elseif ( TG_Status::REJECTED === $to ) {
+			$subject = 'Your tender was not approved: ' . $tender['external_id'];
+			$body    = sprintf( "%s was not approved.\n\nReason: %s\n\nPlease contact the Jumla Tender team if you have any questions.\n\n%s",
+				self::tender_line( $tender ),
+				'' !== trim( (string) $reason ) ? $reason : '-',
+				$view );
+		} elseif ( TG_Status::CLOSED === $to ) {
+			$count   = (int) TG_Bid::count_for_tender( $tender_id );
+			$subject = sprintf( 'Your tender has closed: %s (%d bid%s)', $tender['external_id'], $count, 1 === $count ? '' : 's' );
+			$body    = sprintf( "%s closed with %d bid%s. The bids are now being reviewed.\n\n%s",
+				self::tender_line( $tender ), $count, 1 === $count ? '' : 's', $view );
+		} elseif ( TG_Status::CANCELLED === $to ) {
+			$subject = 'Your tender was cancelled: ' . $tender['external_id'];
+			$body    = sprintf( "%s has been cancelled.%s\n\n%s", self::tender_line( $tender ),
+				'' !== trim( (string) $reason ) ? "\n\nReason: " . $reason : '', $view );
+		}
+
+		if ( $subject ) {
+			$contact = (string) get_user_meta( $owner->ID, 'tg_buyer_contact', true );
+			self::send( $owner->user_email, $subject, 'Dear ' . ( $contact ? $contact : $org ) . ",\n\n" . $body );
 		}
 	}
 

@@ -211,7 +211,7 @@ class TG_Access {
 
 		// The commission is only enforceable because the supplier agreed to
 		// it, so no bid goes in without the current terms accepted.
-		if ( class_exists( 'TG_Terms' ) && ! TG_Terms::has_accepted( $user_id ) ) {
+		if ( tg_commission_enabled() && ! TG_Terms::has_accepted( $user_id ) ) {
 			return new WP_Error(
 				'tg_bid_terms',
 				'Please accept the supplier terms on your dashboard before submitting a bid.'
@@ -220,7 +220,7 @@ class TG_Access {
 
 		// Unpaid commission past its deadline blocks NEW bids. Placed bids are
 		// untouched - this gate is only consulted when bidding.
-		if ( class_exists( 'TG_Commission' ) ) {
+		if ( tg_commission_enabled() ) {
 			$overdue = TG_Commission::overdue_for( $user_id );
 
 			if ( $overdue ) {

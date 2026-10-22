@@ -29,11 +29,16 @@ class TG_Install {
 				'title'   => 'My Dashboard',
 				'content' => '[tg_dashboard]',
 			),
+			'buyer'     => array(
+				'title'   => 'Buyer Portal',
+				'content' => '[tg_buyer_portal]',
+			),
 		);
 	}
 
 	public static function activate() {
 		TG_Auth::register_role();
+		TG_Buyer::register_role();
 		TG_Store::install();
 		self::create_pages();
 		self::create_demo_supplier();
@@ -46,6 +51,23 @@ class TG_Install {
 
 		TG_Router::rewrites();
 		flush_rewrite_rules();
+	}
+
+	/**
+	 * Run on every load until it has run for this release. Updating by
+	 * "Replace current with uploaded" never re-runs activation, so a new role
+	 * or page added in an update would otherwise never exist on a live site.
+	 */
+	public static function upgrade() {
+		if ( get_option( 'tg_setup_version' ) === TG_VERSION ) {
+			return;
+		}
+
+		TG_Auth::register_role();
+		TG_Buyer::register_role();
+		self::create_pages();
+
+		update_option( 'tg_setup_version', TG_VERSION );
 	}
 
 	private static function create_pages() {

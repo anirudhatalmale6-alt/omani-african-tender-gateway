@@ -88,7 +88,7 @@ $checked  = isset( $_POST['tg_sectors'] ) ? array_map( 'sanitize_text_field', (a
 				</div>
 			</fieldset>
 
-			<?php if ( class_exists( 'TG_Terms' ) ) : ?>
+			<?php if ( tg_commission_enabled() ) : ?>
 				<fieldset class="tg-fieldset">
 					<legend>Supplier terms</legend>
 					<?php echo TG_Terms::box_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside. ?>

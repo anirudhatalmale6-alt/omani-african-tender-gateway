@@ -45,7 +45,7 @@ function ok( $label, $cond ) {
 }
 
 $keep = array();
-foreach ( array( 'tg_terms_text', 'tg_terms_version', 'tg_terms_versions', 'tg_commission_rate', 'tg_commission_due_days', 'tg_commission_seq', 'tg_invoice_seq', 'tg_require_subscription', 'tg_vat_rate' ) as $opt ) {
+foreach ( array( 'tg_commission_enabled', 'tg_terms_text', 'tg_terms_version', 'tg_terms_versions', 'tg_commission_rate', 'tg_commission_due_days', 'tg_commission_seq', 'tg_invoice_seq', 'tg_require_subscription', 'tg_vat_rate' ) as $opt ) {
 	$keep[ $opt ] = get_option( $opt, null );
 }
 register_shutdown_function( 'tg_test_commission_cleanup' );
@@ -58,6 +58,12 @@ foreach ( get_users( array( 'search' => 'TEST-c-*', 'search_columns' => array( '
 
 delete_option( 'tg_terms_text' );
 delete_option( 'tg_commission_rate' );
+// Switched on for this suite. The plugin loaded before this line with it off
+// (the default), so its hooks are registered here the way a request would.
+update_option( 'tg_commission_enabled', 'yes' );
+if ( ! has_action( 'tg_tender_status_changed', array( 'TG_Commission', 'on_status_changed' ) ) ) {
+	TG_Commission::init();
+}
 delete_option( 'tg_commission_due_days' );
 update_option( 'tg_vat_rate', 5 );
 update_option( 'tg_require_subscription', 'yes' );
@@ -168,6 +174,19 @@ ok( 'the current version, ticked, does', TG_Terms::has_accepted( $stale ) );
 $_POST = array();
 $_SERVER['REQUEST_METHOD'] = 'GET';
 wp_set_current_user( 0 );
+
+/* ------------------------------------------------------ The off switch */
+
+echo "\n== Switched off, the commission and terms have no effect ==\n";
+delete_option( 'tg_commission_enabled' );
+ok( 'with nothing saved, the commission is OFF by default', ! tg_commission_enabled() );
+update_option( 'tg_commission_enabled', 'no' );
+$off = sup( 'off', false );
+ok( 'the switch reads as off', ! tg_commission_enabled() );
+ok( 'a supplier who never accepted the terms may still bid', true === TG_Access::can_bid( $t_row, $off ) );
+update_option( 'tg_commission_enabled', 'yes' );
+ok( 'switched back on, the same supplier is asked for the terms', 'tg_bid_terms' === code_of( TG_Access::can_bid( $t_row, $off ) ) );
+TG_Terms::accept( $off );
 
 /* ------------------------------------------------------------ Issuing */
 

@@ -38,6 +38,12 @@ class TG_Admin_Commissions {
 		echo '<div class="wrap"><h1>Commissions</h1>';
 		self::notice();
 
+		if ( ! tg_commission_enabled() ) {
+			echo '<div class="notice notice-warning inline"><p><strong>The commission is switched off.</strong> No commission is charged, '
+				. 'and suppliers are not asked to accept the supplier terms. Switch it on under "Rate, deadline &amp; terms" once your lawyer '
+				. 'has approved the terms.</p></div>';
+		}
+
 		echo '<h2 class="nav-tab-wrapper">';
 		foreach ( array( 'invoices' => 'Invoices', 'settings' => 'Rate, deadline &amp; terms' ) as $k => $l ) {
 			printf( '<a href="%s" class="nav-tab%s">%s</a>', esc_url( self::url( array( 'tab' => $k ) ) ), $tab === $k ? ' nav-tab-active' : '', $l ); // phpcs:ignore WordPress.Security.EscapeOutput
@@ -164,6 +170,10 @@ class TG_Admin_Commissions {
 		wp_nonce_field( 'tg_com_settings' );
 		echo '<input type="hidden" name="action" value="tg_com_settings">';
 		echo '<table class="form-table" role="presentation"><tbody>';
+		echo '<tr><th scope="row">Charge commission</th><td><label><input type="checkbox" name="enabled" value="1" '
+			. checked( tg_commission_enabled(), true, false ) . '> Switch the commission and the supplier terms on</label>';
+		echo '<p class="description" style="color:#8a2424;"><strong>When switched on, every supplier must accept the terms below before '
+			. 'their next bid</strong>, and new suppliers accept them when registering. Only switch it on once your lawyer has approved the wording.</p></td></tr>';
 		echo '<tr><th scope="row">Commission rate</th><td><input name="rate" type="text" inputmode="decimal" class="small-text" value="' . esc_attr( TG_Commission::rate() ) . '"> % of the awarded value, plus VAT</td></tr>';
 		echo '<tr><th scope="row">Payment deadline</th><td><input name="days" type="number" min="1" class="small-text" value="' . esc_attr( TG_Commission::due_days() ) . '"> days from the invoice date</td></tr>';
 		echo '<tr><th scope="row">Supplier terms</th><td>';
@@ -211,6 +221,7 @@ class TG_Admin_Commissions {
 		self::guard( 'tg_com_settings' );
 
 		$post    = wp_unslash( $_POST );
+		update_option( 'tg_commission_enabled', empty( $post['enabled'] ) ? 'no' : 'yes' );
 		$changed = TG_Terms::save(
 			sanitize_textarea_field( isset( $post['terms'] ) ? $post['terms'] : '' ),
 			isset( $post['rate'] ) ? (float) $post['rate'] : TG_Commission::rate(),

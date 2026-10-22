@@ -56,7 +56,10 @@ class TG_Shortcodes {
 			// specification is the thing suppliers pay for, so it has to be
 			// TG_Access that decides, exactly as it does for the documents and
 			// for bidding.
-			if ( ! TG_Access::can_see_full_detail() ) {
+			// The buyer who owns a tender always sees it in full.
+			$owner = ! empty( $tender['owner_id'] ) && (int) $tender['owner_id'] === get_current_user_id() && TG_Buyer::is_buyer();
+
+			if ( ! TG_Access::can_see_full_detail() && ! $owner ) {
 				return self::render( 'tender-locked', array( 'tender' => $tender ) );
 			}
 

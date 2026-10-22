@@ -28,6 +28,8 @@ require_once TG_PATH . 'includes/class-tg-award.php';
 require_once TG_PATH . 'includes/class-tg-admin-tenders.php';
 require_once TG_PATH . 'includes/class-tg-admin-suppliers.php';
 require_once TG_PATH . 'includes/class-tg-supplier-docs.php';
+require_once TG_PATH . 'includes/class-tg-buyer.php';
+require_once TG_PATH . 'includes/class-tg-admin-buyers.php';
 require_once TG_PATH . 'includes/class-tg-sectors.php';
 require_once TG_PATH . 'includes/class-tg-subscription.php';
 require_once TG_PATH . 'includes/class-tg-subscription-ui.php';
@@ -99,6 +101,15 @@ function tg_default_settings() {
 			'document_url'    => '',
 		),
 	);
+}
+
+/**
+ * Whether the 2% commission - and the supplier terms it rests on - is switched
+ * on. Off by default: it must not reach suppliers until the client's lawyer
+ * has approved the terms. The code is always loaded; only its effect is gated.
+ */
+function tg_commission_enabled() {
+	return 'yes' === get_option( 'tg_commission_enabled', 'no' );
 }
 
 function tg_settings() {
@@ -197,13 +208,18 @@ add_action( 'plugins_loaded', function () {
 	TG_Admin_Tenders::init();
 	TG_Admin_Suppliers::init();
 	TG_Supplier_Docs::init();
+	TG_Buyer::init();
+	TG_Admin_Buyers::init();
 	TG_Sectors::init();
 	TG_Subscription::init();
 	TG_Subscription_UI::init();
 	TG_Admin_Subscriptions::init();
-	TG_Terms::init();
-	TG_Commission::init();
-	TG_Commission_UI::init();
+	if ( tg_commission_enabled() ) {
+		TG_Terms::init();
+		TG_Commission::init();
+		TG_Commission_UI::init();
+	}
+	// Always loaded: its settings tab is where the commission is switched on.
 	TG_Admin_Commissions::init();
 	TG_Mailer::init();
 	TG_Notify::init();
@@ -239,6 +255,10 @@ add_action( 'init', function () {
 } );
 
 add_action( 'tg_run_schedule', array( 'TG_Tender', 'run_schedule' ) );
+
+// New roles and pages added by an update. On init, not plugins_loaded: pages
+// are posts, and post types are registered on init.
+add_action( 'init', array( 'TG_Install', 'upgrade' ), 20 );
 
 // Safety net: if cron is disabled or unreliable on the host, an admin opening
 // the tender screens still sees accurate statuses.

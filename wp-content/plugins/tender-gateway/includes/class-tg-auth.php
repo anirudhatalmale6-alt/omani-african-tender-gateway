@@ -32,14 +32,16 @@ class TG_Auth {
 	}
 
 	public static function hide_admin_bar( $show ) {
-		return self::is_supplier() ? false : $show;
+		return ( self::is_supplier() || TG_Buyer::is_buyer() ) ? false : $show;
 	}
 
 	/**
 	 * Suppliers have no business in wp-admin; send them to their dashboard.
 	 */
 	public static function block_admin() {
-		if ( wp_doing_ajax() || ! self::is_supplier() ) {
+		$buyer = TG_Buyer::is_buyer();
+
+		if ( wp_doing_ajax() || ( ! self::is_supplier() && ! $buyer ) ) {
 			return;
 		}
 
@@ -55,7 +57,7 @@ class TG_Auth {
 			return;
 		}
 
-		wp_safe_redirect( tg_page_url( 'dashboard' ) );
+		wp_safe_redirect( $buyer ? TG_Buyer::portal_url() : tg_page_url( 'dashboard' ) );
 		exit;
 	}
 
@@ -148,7 +150,14 @@ class TG_Auth {
 		}
 
 		wp_set_current_user( $user->ID );
-		wp_safe_redirect( self::safe_redirect_target() );
+
+		// A buyer's home is the buyer portal, not the supplier dashboard.
+		$target = self::safe_redirect_target();
+		if ( TG_Buyer::is_buyer( $user->ID ) && $target === tg_page_url( 'dashboard' ) ) {
+			$target = TG_Buyer::portal_url();
+		}
+
+		wp_safe_redirect( $target );
 		exit;
 	}
 
@@ -194,7 +203,7 @@ class TG_Auth {
 		}
 		// Checked on the server too: "required" in the browser is a courtesy,
 		// and the commission rests on this agreement being real.
-		if ( class_exists( 'TG_Terms' ) && empty( $_POST['tg_terms_agree'] ) ) {
+		if ( tg_commission_enabled() && empty( $_POST['tg_terms_agree'] ) ) {
 			self::add_error( 'Please read and accept the supplier terms to register.' );
 
 			return;
@@ -230,7 +239,7 @@ class TG_Auth {
 		update_user_meta( $user_id, 'tg_status', 'pending' );
 
 		// Record acceptance only if the version they read is still current.
-		if ( class_exists( 'TG_Terms' ) && (int) ( isset( $_POST['tg_terms_version'] ) ? $_POST['tg_terms_version'] : 0 ) === TG_Terms::version() ) {
+		if ( tg_commission_enabled() && (int) ( isset( $_POST['tg_terms_version'] ) ? $_POST['tg_terms_version'] : 0 ) === TG_Terms::version() ) {
 			TG_Terms::accept( $user_id );
 		}
 
