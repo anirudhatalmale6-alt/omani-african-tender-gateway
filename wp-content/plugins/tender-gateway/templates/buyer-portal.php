@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 $tenders = TG_Buyer::tenders_for( $user_id );
 $org     = TG_Buyer::organisation( $user_id );
 $colours = array(
-	'draft' => '#646970', 'pending' => '#b26200', 'approved' => '#2d6cb5', 'open' => '#1d7a3f', 'closed' => '#50575e',
+	'draft' => '#646970', 'pending' => '#b26200', 'changes_required' => '#b5179e', 'approved' => '#2d6cb5', 'open' => '#1d7a3f', 'closed' => '#50575e',
 	'awarded' => '#6c3bb5', 'completed' => '#1d2327', 'cancelled' => '#8a2424', 'rejected' => '#8a2424',
 );
 ?>
@@ -57,7 +57,7 @@ $colours = array(
 						<td style="padding:8px 6px;"><?php echo (int) TG_Bid::count_for_tender( $t['id'] ); ?></td>
 						<td style="padding:8px 6px;">
 							<?php if ( TG_Buyer::is_editable( $t ) ) : ?>
-								<a class="tg-link" href="<?php echo esc_url( TG_Buyer::portal_url( array( 'edit' => $t['id'] ) ) ); ?>">Edit draft</a>
+								<a class="tg-link" href="<?php echo esc_url( TG_Buyer::portal_url( array( 'edit' => $t['id'] ) ) ); ?>"><?php echo TG_Status::CHANGES_REQUIRED === $t['status'] ? 'Make changes' : 'Edit draft'; ?></a>
 							<?php else : ?>
 								<a class="tg-link" href="<?php echo esc_url( TG_Buyer::portal_url( array( 'tender' => $t['id'] ) ) ); ?>">View</a>
 							<?php endif; ?>

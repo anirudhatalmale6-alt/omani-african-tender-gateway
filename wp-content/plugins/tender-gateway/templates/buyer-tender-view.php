@@ -25,6 +25,9 @@ $public = in_array( $tender['status'], TG_Status::supplier_visible(), true );
 
 	<?php if ( TG_Status::PENDING === $tender['status'] ) : ?>
 		<div class="tg-notice" style="background:#fdf8e7;border-left:3px solid #8a6d1f;">With the Jumla Tender team for approval. You will receive an email as soon as it is published.</div>
+	<?php elseif ( TG_Status::CHANGES_REQUIRED === $tender['status'] ) : ?>
+		<div class="tg-notice tg-notice--error"><strong>Changes required by the Jumla Tender team:</strong> <?php echo esc_html( (string) $tender['status_reason'] ); ?></div>
+		<p><a class="tg-btn tg-btn--accent" href="<?php echo esc_url( TG_Buyer::portal_url( array( 'edit' => (int) $tender['id'] ) ) ); ?>">Make the changes</a></p>
 	<?php elseif ( TG_Status::REJECTED === $tender['status'] ) : ?>
 		<div class="tg-notice tg-notice--error">Not approved. <?php echo esc_html( (string) $tender['status_reason'] ); ?></div>
 	<?php elseif ( TG_Status::APPROVED === $tender['status'] && ! empty( $tender['opening_at'] ) ) : ?>

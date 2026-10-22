@@ -185,6 +185,27 @@ ok( 'the buyer is NOT told it is live', 0 === count( mail_with( 'is live' ) ) );
 $dt = $sneak;
 TG_Tender::move( $dt, TG_Status::APPROVED, 1 );
 
+echo "\n== Changes Required: the team sends it back with comments ==\n";
+$ct = TG_Buyer::save_tender( $b, $good );
+TG_Buyer::submit_tender( $b, $ct );
+ok( 'asking for changes needs comments', 'tg_status_reason' === code_of( TG_Tender::move( $ct, TG_Status::CHANGES_REQUIRED, 1, '' ) ) );
+$outbox = array();
+TG_Tender::move( $ct, TG_Status::CHANGES_REQUIRED, 1, 'TEST please attach the bill of quantities' );
+ok( 'the tender is now Changes Required', TG_Status::CHANGES_REQUIRED === TG_Tender::get( $ct )['status'] );
+$chg = mail_with( 'Changes needed' );
+ok( 'the buyer is emailed the comments', 1 === count( $chg ) && in_array( 'b@buyer-test.invalid', $chg[0]['to'], true ) && false !== strpos( $chg[0]['body'], 'TEST please attach the bill of quantities' ) );
+ok( 'with a link straight to editing it', 1 === count( $chg ) && false !== strpos( $chg[0]['body'], 'edit=' . $ct ) );
+ok( 'it is still not on the public site', ! isset( TG_Tender::public_records()[ TG_Tender::get( $ct )['external_id'] ] ) );
+ok( 'another buyer still cannot touch it', 'tg_buyer_not_owner' === code_of( TG_Buyer::save_tender( $a, $good, $ct ) ) );
+ok( 'the owner can edit it again', $ct === TG_Buyer::save_tender( $b, array_merge( $good, array( 'title' => 'TEST chairs, with BoQ' ) ), $ct ) );
+ok( 'saving keeps it in Changes Required (not silently resubmitted)', TG_Status::CHANGES_REQUIRED === TG_Tender::get( $ct )['status'] );
+$outbox = array();
+ok( 'resubmitting sends it back for approval', 'pending' === code_of( TG_Buyer::submit_tender( $b, $ct ) ) );
+ok( 'it is Pending Approval again', TG_Status::PENDING === TG_Tender::get( $ct )['status'] );
+ok( 'the team is told it was resubmitted after changes', 1 === count( mail_with( 'resubmitted after changes' ) ) );
+ok( 'and it is locked again', 'tg_buyer_locked' === code_of( TG_Buyer::save_tender( $b, $good, $ct ) ) );
+ok( 'it still needs approval to go live', ! isset( TG_Tender::public_records()[ TG_Tender::get( $ct )['external_id'] ] ) );
+
 echo "\n== Rejection ==\n";
 $rt = TG_Buyer::save_tender( $b, $good );
 TG_Buyer::submit_tender( $b, $rt );

@@ -348,9 +348,11 @@ class TG_Notify {
 		$view  = TG_Buyer::portal_url( array( 'tender' => (int) $tender_id ) );
 
 		if ( TG_Status::PENDING === $to ) {
-			self::to_admin( 'Tender submitted for approval: ' . $tender['external_id'], sprintf(
-				"%s has submitted a tender for your approval.\n\n%s\nCloses: %s\n\nReview it and approve or reject it here:\n%s",
+			$again = TG_Status::CHANGES_REQUIRED === $from;
+			self::to_admin( ( $again ? 'Tender resubmitted after changes: ' : 'Tender submitted for approval: ' ) . $tender['external_id'], sprintf(
+				"%s has %s for your approval.\n\n%s\nCloses: %s\n\nReview it and approve, reject or ask for changes here:\n%s",
 				$org,
+				$again ? 'made the changes you asked for and resubmitted a tender' : 'submitted a tender',
 				self::tender_line( $tender ),
 				$tender['closing_at'] ? date_i18n( 'j F Y, H:i', strtotime( $tender['closing_at'] ) ) : '-',
 				admin_url( 'admin.php?page=' . TG_Admin_Tenders::EDIT_SLUG . '&tender=' . (int) $tender_id )
@@ -375,6 +377,12 @@ class TG_Notify {
 				self::tender_line( $tender ),
 				date_i18n( 'j F Y, H:i', strtotime( $tender['opening_at'] ) ),
 				$view );
+		} elseif ( TG_Status::CHANGES_REQUIRED === $to ) {
+			$subject = 'Changes needed on your tender: ' . $tender['external_id'];
+			$body    = sprintf( "The Jumla Tender team has reviewed %s and asks for the following changes before it can be published:\n\n%s\n\nYou can edit it again in your buyer portal, then submit it again:\n%s",
+				self::tender_line( $tender ),
+				'' !== trim( (string) $reason ) ? $reason : '-',
+				TG_Buyer::portal_url( array( 'edit' => (int) $tender_id ) ) );
 		} elseif ( TG_Status::REJECTED === $to ) {
 			$subject = 'Your tender was not approved: ' . $tender['external_id'];
 			$body    = sprintf( "%s was not approved.\n\nReason: %s\n\nPlease contact the Jumla Tender team if you have any questions.\n\n%s",

@@ -8,9 +8,9 @@
  * that skips the rules is exactly the thing an audit trail cannot explain
  * afterwards.
  *
- * Phase 1 ships eight statuses. CHANGES_REQUIRED, UNDER_EVALUATION and
- * COMPLETED arrive in Phase 2; they are listed in the map below but marked
- * inactive so the transition table does not have to be rewritten later.
+ * Phase 1 shipped eight statuses. CHANGES_REQUIRED went live with the buyer
+ * portal (M6). UNDER_EVALUATION and COMPLETED are listed in the map below but
+ * still marked inactive so the transition table does not have to be rewritten.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -28,7 +28,7 @@ class TG_Status {
 	const CANCELLED        = 'cancelled';
 	const REJECTED         = 'rejected';
 
-	// Phase 2.
+	// Phase 2 (CHANGES_REQUIRED is live).
 	const CHANGES_REQUIRED = 'changes_required';
 	const UNDER_EVALUATION = 'under_evaluation';
 	const COMPLETED        = 'completed';
@@ -43,7 +43,7 @@ class TG_Status {
 		return array(
 			self::DRAFT            => array( 'label' => 'Draft',             'terminal' => false, 'phase' => 1, 'public' => false ),
 			self::PENDING          => array( 'label' => 'Pending Approval',  'terminal' => false, 'phase' => 1, 'public' => false ),
-			self::CHANGES_REQUIRED => array( 'label' => 'Changes Required',  'terminal' => false, 'phase' => 2, 'public' => false ),
+			self::CHANGES_REQUIRED => array( 'label' => 'Changes Required',  'terminal' => false, 'phase' => 1, 'public' => false ),
 			self::APPROVED         => array( 'label' => 'Approved',          'terminal' => false, 'phase' => 1, 'public' => true ),
 			self::OPEN             => array( 'label' => 'Open',              'terminal' => false, 'phase' => 1, 'public' => true ),
 			self::CLOSED           => array( 'label' => 'Closed',            'terminal' => false, 'phase' => 1, 'public' => true ),

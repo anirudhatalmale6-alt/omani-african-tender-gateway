@@ -8,8 +8,8 @@
  *
  * The rules that matter, enforced here and not in the screens:
  *  - A buyer only ever sees and changes their OWN tenders.
- *  - A buyer edits a tender only while it is a Draft. Once submitted, changes
- *    go through the platform team.
+ *  - A buyer edits a tender only while it is a Draft, or after the team has
+ *    sent it back as Changes Required. Otherwise changes go through the team.
  *  - The buyer name on a tender is always the account's organisation. Nobody
  *    can publish in another organisation's name.
  *  - Every tender goes to the platform team for approval. Nothing a buyer
@@ -58,8 +58,11 @@ class TG_Buyer {
 		return is_array( $tender ) && ! empty( $tender['owner_id'] ) && (int) $tender['owner_id'] === (int) $user_id;
 	}
 
+	/**
+	 * A draft, or a tender the team sent back with comments.
+	 */
 	public static function is_editable( $tender ) {
-		return is_array( $tender ) && TG_Status::DRAFT === $tender['status'];
+		return is_array( $tender ) && in_array( $tender['status'], array( TG_Status::DRAFT, TG_Status::CHANGES_REQUIRED ), true );
 	}
 
 	public static function portal_url( $args = array() ) {
@@ -188,7 +191,7 @@ class TG_Buyer {
 			return new WP_Error( 'tg_buyer_incomplete', 'Before submitting, please add ' . implode( ', ', $missing ) . '.' );
 		}
 
-		$r = TG_Tender::move( $tender_id, TG_Status::PENDING, (int) $user_id, 'Submitted by the buyer.' );
+		$r = TG_Tender::move( $tender_id, TG_Status::PENDING, (int) $user_id, TG_Status::CHANGES_REQUIRED === $tender['status'] ? 'Resubmitted by the buyer after changes.' : 'Submitted by the buyer.' );
 
 		return is_wp_error( $r ) ? $r : 'pending';
 	}

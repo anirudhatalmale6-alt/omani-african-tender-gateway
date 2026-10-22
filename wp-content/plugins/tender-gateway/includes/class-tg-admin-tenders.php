@@ -579,6 +579,14 @@ class TG_Admin_Tenders {
 			}
 		}
 
+		// The forward move first, so "Apply" on the default never sends a
+		// tender back, rejects it or cancels it by accident.
+		usort( $targets, function ( $x, $y ) {
+			$back = array( TG_Status::CHANGES_REQUIRED, TG_Status::REJECTED, TG_Status::CANCELLED );
+
+			return (int) in_array( $x, $back, true ) - (int) in_array( $y, $back, true );
+		} );
+
 		echo '<h2>Move this tender on</h2>';
 
 		if ( empty( $targets ) ) {
@@ -601,7 +609,7 @@ class TG_Admin_Tenders {
 		echo '</select></p>';
 		echo '<p><label for="tg_reason">Reason</label><br>';
 		echo '<textarea name="reason" id="tg_reason" rows="2" class="large-text" style="max-width:640px;"></textarea>';
-		echo '<br><span class="description">Required when rejecting or cancelling. Recorded against the tender permanently.</span></p>';
+		echo '<br><span class="description">Required when rejecting, cancelling or asking for changes. For Changes Required, this is what the buyer is asked to fix - it is emailed to them. Recorded against the tender permanently.</span></p>';
 
 		submit_button( 'Apply', 'secondary' );
 		echo '</form>';
@@ -809,6 +817,7 @@ class TG_Admin_Tenders {
 		$colours = array(
 			TG_Status::DRAFT     => '#646970',
 			TG_Status::PENDING   => '#b26200',
+			TG_Status::CHANGES_REQUIRED => '#b5179e',
 			TG_Status::APPROVED  => '#2271b1',
 			TG_Status::OPEN      => '#1d7a3f',
 			TG_Status::CLOSED    => '#50575e',

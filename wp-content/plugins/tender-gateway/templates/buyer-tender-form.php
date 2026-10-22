@@ -19,7 +19,10 @@ $docs = $id ? TG_Docs::for_owner( 'tender', $id ) : array();
 ?>
 <div class="tg-dash tg-buyer">
 	<p><a class="tg-link" href="<?php echo esc_url( TG_Buyer::portal_url() ); ?>">&larr; Your tenders</a></p>
-	<h1><?php echo $tender ? esc_html( 'Edit draft ' . $tender['external_id'] ) : 'Create a tender'; ?></h1>
+	<h1><?php echo $tender ? esc_html( ( TG_Status::CHANGES_REQUIRED === $tender['status'] ? 'Changes required: ' : 'Edit draft ' ) . $tender['external_id'] ) : 'Create a tender'; ?></h1>
+	<?php if ( $tender && TG_Status::CHANGES_REQUIRED === $tender['status'] ) : ?>
+		<div class="tg-notice tg-notice--error"><strong>The Jumla Tender team asks:</strong> <?php echo esc_html( (string) $tender['status_reason'] ); ?><br>Make the changes below, then submit it again.</div>
+	<?php endif; ?>
 	<p class="tg-note">Buyer: <strong><?php echo esc_html( TG_Buyer::organisation( $user_id ) ); ?></strong>. Fields marked * are needed before you submit; a draft can be saved at any time.</p>
 
 	<?php if ( $flash ) : ?>
@@ -74,7 +77,7 @@ $docs = $id ? TG_Docs::for_owner( 'tender', $id ) : array();
 				</label>
 				<label class="tg-field tg-field--block">
 					<span>Estimated value (OMR)</span>
-					<input type="number" step="0.001" min="0" name="value" value="<?php echo esc_attr( $v( 'value', '' ) ); ?>">
+					<input type="number" step="0.001" min="0" name="value" value="<?php echo (float) $v( 'value', 0 ) > 0 ? esc_attr( $v( 'value' ) ) : ''; ?>">
 					<input type="hidden" name="currency" value="OMR">
 					<small>Optional. Leave empty to show "Value not disclosed".</small>
 				</label>
